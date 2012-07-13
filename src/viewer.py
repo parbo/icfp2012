@@ -67,6 +67,7 @@ class Viewer(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.OnRunBtn, id = ID_RUN_BTN)
         self.Bind(EVT_RUN_SIM, self.OnRunEvent, id = ID_RUN_EVENT)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_CHAR_HOOK, self.OnKey)
         # Cave object.
         self.cave = None
         self._cave_running = False
@@ -120,6 +121,27 @@ class Viewer(wx.Frame):
         #print 'OnClose'
         self.Destroy()
 
+    def OnKey(self, event):
+        if isinstance(event.EventObject, wx.TextCtrl):
+            event.Skip()
+            return
+        kc = event.GetKeyCode()
+        if kc == wx.WXK_DOWN:
+            self.MakeMove(cave.MOVE_DOWN)
+        elif kc == wx.WXK_UP:
+            self.MakeMove(cave.MOVE_UP)
+        elif kc == wx.WXK_LEFT:
+            self.MakeMove(cave.MOVE_LEFT)
+        elif kc == wx.WXK_RIGHT:
+            self.MakeMove(cave.MOVE_RIGHT)
+#        elif kc == wx.WXK_W:
+#            self.MakeMove(cave.MOVE_WAIT)
+        else:
+            event.Skip()
+
+    def AcceptsFocus(self):
+        return True
+
     def Run(self, steps):
         route = self._route_input.GetValue()
         print self._cave_step, route[self._cave_step:]
@@ -136,6 +158,12 @@ class Viewer(wx.Frame):
 
         self._canvas.Refresh()
         self.UpdateStatusBar()
+
+    def MakeMove(self, move):
+        route = self._route_input.GetValue()
+        route = route[0:self._cave_step] + move + route[self._cave_step:]
+        self._route_input.SetValue(route)
+        self.Run(1)
 
     def UpdateStatusBar(self):
         bar = self.GetStatusBar()
