@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import astar
 import cave
 import math
@@ -147,10 +148,8 @@ class AStarSolver(Solver):
 
 if __name__ == "__main__":
     c = cave.Cave()
-    f = open(sys.argv[1])
-    c.load_file(f)
-    f.close()
+    c.load_file(sys.stdin)
     s = AStarSolver()
     new_c, route = s.solve(c)
     print route
-    print new_c.score
+    #print new_c.score
