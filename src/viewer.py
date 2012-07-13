@@ -70,6 +70,7 @@ class Viewer(wx.Frame):
         # Cave object.
         self.cave = None
         self.cave_running = False
+        self._cave_step = 0
         # Show window.
         self.Move((10, 10))
         self.Show()
@@ -119,6 +120,12 @@ class Viewer(wx.Frame):
         self.Destroy()
 
     def Run(self, steps):
+        route = self._route_input.GetValue()
+        print self._cave_step, route[self._cave_step:]
+        while steps > 0 and self._cave_step < len(route):
+            self.cave = self.cave.move(route[self._cave_step])
+            self._cave_step += 1
+            steps -= 1
         self._canvas.Refresh()
         self.UpdateStatusBar()
 

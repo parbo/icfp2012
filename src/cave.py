@@ -123,7 +123,7 @@ class Cave(object):
 
     def update(self):
         next = self.clone()
-        size_x, size_y = self.size()
+        size_x, size_y = self.size
         for y in range(size_y):
             for x in range(size_x):
                 if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
