@@ -98,7 +98,7 @@ class Cave(object):
         dx, dy = DPOS[move]
         x, y = self._robot_pos
         new_x = x + dx
-        new_y = x + dy
+        new_y = y + dy
         target_content = self.at(new_x, new_y)
         if target_content in (CAVE_EMPTY, CAVE_DIRT):
             next._robot_pos = (new_x, new_y)
@@ -129,13 +129,13 @@ class Cave(object):
                 if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
                     next._cave[y][x] = CAVE_EMPTY
                     next._cave[y - 1][x] = CAVE_ROCK
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y - 1) == CAVE_EMPTY:
+                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
                     next._cave[y][x] = CAVE_EMPTY
                     next._cave[y - 1][x + 1] = CAVE_ROCK
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y - 1) == CAVE_EMPTY:
+                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y) == CAVE_EMPTY and self.at(x - 1, y - 1) == CAVE_EMPTY:
                     next._cave[y][x] = CAVE_EMPTY
                     next._cave[y - 1][x - 1] = CAVE_ROCK
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y - 1) == CAVE_EMPTY:
+                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
                     next._cave[y][x] = CAVE_EMPTY
                     next._cave[y - 1][x + 1] = CAVE_ROCK
                 elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
