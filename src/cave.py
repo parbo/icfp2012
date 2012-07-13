@@ -26,15 +26,30 @@ DPOS = {
     MOVE_ABORT: (0, 0)
 }
 
+SCORE_MOVE = -1
+SCORE_LAMBDA_COLLECT = 25
+SCORE_LAMBDA_ABORT = 25
+SCORE_LAMBDA_LIFT = 50
+
+END_STATE_WIN = 'win'
+END_STATE_LOSE = 'lose'
+END_STATE_ABORT = 'abort'
+
+class RobotDestroyed(Exception):
+    pass
+
 class Cave(object):
     def __init__(self):
+        # Public attributes
+        self.score = 0
+        self.end_state = None
+        # Private attributes
         self._cave = None
         self._robot_pos = None
         self._lift_pos = None
         self._lift_open = False
         self._lambda_count = 0
         self._lambda_collected = 0
-        self._completed = False
 
     def __str__(self):
         return '\n'.join([''.join(row) for row in reversed(self._cave)])
@@ -65,6 +80,15 @@ class Cave(object):
     def set_robot(self, x, y):
         self._robot_pos = (x, y)
         self.set(x, y, CAVE_ROBOT)
+        
+    def set_rock(self, x, y):
+        self.set(x, y, CAVE_ROCK)
+        if self.at(x, y - 1) == CAVE_ROBOT:
+            raise RobotDestroyed()
+        
+    @property
+    def completed(self):
+        return self.end_state is not None
 
     def analyze(self):
         self._lambda_count = 0
@@ -101,7 +125,14 @@ class Cave(object):
         return copy.deepcopy(self)
 
     def move(self, move):
+        if self.completed:
+            return self
         next = self.clone()
+        next.score += SCORE_MOVE
+        if move == MOVE_ABORT:
+            next.end_state = END_STATE_ABORT
+            next.score += self._lambda_collected * SCORE_LAMBDA_ABORT
+            return next
         dx, dy = DPOS[move]
         x, y = self._robot_pos
         new_x = x + dx
@@ -113,7 +144,9 @@ class Cave(object):
         elif target_content == CAVE_OPEN_LIFT:
             next.set_robot(new_x, new_y)
             next.set(x, y, CAVE_EMPTY)
-            next._completed = True
+            next.end_state = END_STATE_WIN
+            next.score += self._lambda_collected * SCORE_LAMBDA_LIFT
+            return next
         elif target_content == CAVE_LAMBDA:
             next.set_robot(new_x, new_y)
             next.set(x, y, CAVE_EMPTY)
@@ -121,11 +154,12 @@ class Cave(object):
             next._lambda_count -= 1
             if next._lambda_count == 0:
                 next._lift_open = True
+            next.score += SCORE_LAMBDA_COLLECT
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
                 next.set_robot(new_x, new_y)
                 next.set(x, y, CAVE_EMPTY)
-                next.set(x + 2 * dx, y, CAVE_ROCK)
+                next.set_rock(x + 2 * dx, y)
         assert next.at(*next._robot_pos) == CAVE_ROBOT
         return next.update()
 
@@ -134,20 +168,23 @@ class Cave(object):
         size_x, size_y = self.size
         for y in range(size_y):
             for x in range(size_x):
-                if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
-                    next.set(x, y, CAVE_EMPTY)
-                    next.set(x, y - 1, CAVE_ROCK)
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                    next.set(x, y, CAVE_EMPTY)
-                    next.set(x + 1, y - 1, CAVE_ROCK)
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y) == CAVE_EMPTY and self.at(x - 1, y - 1) == CAVE_EMPTY:
-                    next.set(x, y, CAVE_EMPTY)
-                    next.set(x - 1, y - 1, CAVE_ROCK)
-                elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                    next.set(x, y, CAVE_EMPTY)
-                    next.set(x + 1, y - 1, CAVE_ROCK)
-                elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
-                    next.set(x, y, CAVE_OPEN_LIFT)
+                try:
+                    if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
+                        next.set(x, y, CAVE_EMPTY)
+                        next.set_rock(x, y - 1)
+                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
+                        next.set(x, y, CAVE_EMPTY)
+                        next.set_rock(x + 1, y - 1)
+                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y) == CAVE_EMPTY and self.at(x - 1, y - 1) == CAVE_EMPTY:
+                        next.set(x, y, CAVE_EMPTY)
+                        next.set_rock(x - 1, y - 1)
+                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
+                        next.set(x, y, CAVE_EMPTY)
+                        next.set_rock(x + 1, y - 1)
+                    elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
+                        next.set(x, y, CAVE_OPEN_LIFT)
+                except RobotDestroyed:
+                    next.end_state = END_STATE_LOSE
         return next
 
 if __name__ == '__main__':
