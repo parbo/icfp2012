@@ -32,21 +32,24 @@ class Viewer(wx.Frame):
         self.stepInput = wx.SpinCtrl(self, -1, '1', min=1, max=3000000, initial=1)
         self.runBtn = wx.Button(self, ID_RUN_BTN, 'Run')
         self.canvas = Canvas(self)
+        self.canvas.EnableScrolling(True, True)
         # Sizer layout.
         self.mainSizer = wx.BoxSizer(wx.VERTICAL)
         self.mapSizer = wx.BoxSizer(wx.HORIZONTAL)
         self.routeSizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.canvasAreaSizer = wx.BoxSizer(wx.HORIZONTAL)
         self.canvasSizer = wx.BoxSizer(wx.HORIZONTAL)
         self.commandSizer = wx.BoxSizer(wx.VERTICAL)
         self.mainSizer.Add(self.mapSizer, 0, flag = wx.EXPAND)
         self.mainSizer.Add(self.routeSizer, 0, flag = wx.EXPAND)
-        self.mainSizer.Add(self.canvasSizer, 1, flag = wx.EXPAND)
+        self.mainSizer.Add(self.canvasAreaSizer, 1, flag = wx.EXPAND)
         self.mapSizer.Add(self.mapLabel, 1, flag = wx.ALIGN_LEFT)
         self.mapSizer.Add(self.mapInput, 7, flag = wx.EXPAND)
         self.mapSizer.Add(self.mapSelectBtn, 0, flag = wx.ALIGN_RIGHT)
         self.routeSizer.Add(self.routeLabel, 1, flag = wx.ALIGN_LEFT)
         self.routeSizer.Add(self.routeInput, 7, flag = wx.EXPAND)
-        self.canvasSizer.Add(self.commandSizer, 0, flag = wx.EXPAND)
+        self.canvasAreaSizer.Add(self.commandSizer, 0, flag = wx.EXPAND)
+        self.canvasAreaSizer.Add(self.canvasSizer, 1, flag = wx.EXPAND)
         self.canvasSizer.Add(self.canvas, 1, flag = wx.EXPAND)
         self.commandSizer.Add(self.loadBtn, 0, flag = wx.EXPAND)
         self.commandSizer.Add(self.stepBtn, 0, flag = wx.EXPAND)
@@ -82,8 +85,13 @@ class Viewer(wx.Frame):
         #print 'OnLoadBtn'
         map_path = self.mapInput.GetValue()
         f = open(map_path)
-        self.sim = f.readlines()
-        self.canvas.SetMapSize(len(self.sim[0]), len(self.sim))
+        map_def = f.readlines()
+        w = max((len(line) - 1 for line in map_def))
+        h = len(map_def)
+        self.sim = []
+        for line in map_def:
+            self.sim.append(line[0:-1] + " "*(w-(len(line)-1)))
+        self.canvas.SetMapSize(w, h)
         self.UpdateStatusBar()
 
     def OnStepBtn(self, event):
@@ -115,18 +123,9 @@ class Viewer(wx.Frame):
     def UpdateStatusBar(self):
         bar = self.GetStatusBar()
 
-class Canvas(wx.Panel):
+class Canvas(wx.ScrolledWindow):
     def __init__(self, parent):
-        wx.Panel.__init__(self, parent, -1)
-        # Requested world size.
-        self.xwrq = 10
-        self.ywrq = 10
-        # Actual world size.
-        self.xw = 10
-        self.yw = 10
-        # Draw area size in pixels.
-        self.xp = 160
-        self.yp = 160
+        wx.ScrolledWindow.__init__(self, parent, -1)
         self.Bind(wx.EVT_SIZE, self.OnSize)
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         # load bitmaps
@@ -138,19 +137,20 @@ class Canvas(wx.Panel):
         self.bmpRobot = wx.Bitmap(os.path.join("images", "robot.jpg"));
         self.bmpRock = wx.Bitmap(os.path.join("images", "rock.jpg"));
         self.bmpWall = wx.Bitmap(os.path.join("images", "wall.jpg"));
+        # Ensure scrollbars are used
+        self.SetMapSize(10, 10)
 
     def OnSize(self, event):
         #print 'Canvas.OnSize'
-        size = self.GetClientSize()
-        self.xp = size.x
-        self.yp = size.y
-        self.UpdateMapSize()
+        pass
 
     def OnPaint(self, event):
         #print 'Canvas.OnPaint'
         dc = wx.PaintDC(self)
         dc.SetPen(wx.BLACK_PEN)
-        dc.SetBrush(wx.WHITE_BRUSH)
+        dc.SetBrush(wx.LIGHT_GREY_BRUSH)
+        dc.SetBackground(wx.LIGHT_GREY_BRUSH)
+        dc.Clear()
         parent = self.GetParent()
         if parent.sim is not None:
             def bmpFromObj(obj):
@@ -163,24 +163,21 @@ class Canvas(wx.Panel):
                         ".": self.bmpEarth,
                         " ": self.bmpEmpty}[obj]
             for y, line in enumerate(parent.sim):
-                for x, pos in enumerate(line.strip()):
+                for x, pos in enumerate(line):
                     bmp = bmpFromObj(pos)
-                    dc.DrawBitmap(bmp, x*16, y*16, True)
+                    p = self.CalcScrolledPosition((x*16, y*16))
+                    dc.DrawBitmap(bmp, p.x, p.y, True)
 
     def SetMapSize(self, xw, yw):
-        self.xwrq = xw
-        self.ywrq = yw
+        self.xp = 16 * xw
+        self.yp = 16 * yw
         self.UpdateMapSize()
 
     def UpdateMapSize(self):
-        if (self.xwrq / self.xp) < (self.ywrq / self.yp):
-            scale = self.ywrq / self.yp # m / pixel
-        else:
-            scale = self.xwrq / self.xp # m / pixel
         # Size in world coordinates.
-        self.xw = scale * self.xp
-        self.yw = scale * self.yp
-        self.scale = scale
+        self.SetClientSize((self.xp, self.yp))
+        self.SetScrollbars(1, 1, self.xp, self.yp)
+        self.SetScrollRate(16, 16)
         self.Refresh()
         #print 'Set world size:', self.xw / EARTH_RADIUS, self.yw / EARTH_RADIUS, 'Scale = %.3e m/pxl' % scale
 
