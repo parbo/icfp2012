@@ -120,7 +120,7 @@ class Cave(object):
             next._lambda_collected += 1
             next._lambda_count -= 1
             if next._lambda_count == 0:
-                self._lift_open = True
+                next._lift_open = True
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
                 next.set_robot(new_x, new_y)
