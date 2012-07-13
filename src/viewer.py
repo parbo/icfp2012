@@ -69,7 +69,7 @@ class Viewer(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         # Cave object.
         self.cave = None
-        self.cave_running = False
+        self._cave_running = False
         self._cave_step = 0
         # Show window.
         self.Move((10, 10))
@@ -92,6 +92,7 @@ class Viewer(wx.Frame):
         self.cave = cave.Cave()
         f = open(map_path)
         self.cave.load_file(f)
+        self._cave_step = 0
         f.close()
         w, h = self.cave.size
         self._canvas.SetMapSize(w, h)
@@ -103,11 +104,11 @@ class Viewer(wx.Frame):
 
     def OnRunBtn(self, event):
         #print 'OnRunBtn'
-        if self.cave_running:
-            self.cave_running = False
+        if self._cave_running:
+            self._cave_running = False
             self._run_btn.SetLabel('Run')
         else:
-            self.cave_running = True
+            self._cave_running = True
             self._run_btn.SetLabel('Stop')
             self.AddPendingEvent(RunSimEvent(id=ID_RUN_EVENT))
 
@@ -126,6 +127,13 @@ class Viewer(wx.Frame):
             self.cave = self.cave.move(route[self._cave_step])
             self._cave_step += 1
             steps -= 1
+        if self._cave_running:
+            if self._cave_step < len(route):
+                self.AddPendingEvent(RunSimEvent(id=ID_RUN_EVENT))
+            else:
+                self._run_btn.SetLabel('Run')
+                self._cave_running = False
+
         self._canvas.Refresh()
         self.UpdateStatusBar()
 
