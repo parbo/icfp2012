@@ -35,10 +35,10 @@ class Cave(object):
         self._lambda_count = 0
         self._lambda_collected = 0
         self._completed = False
-        
+
     def __str__(self):
         return '\n'.join([''.join(row) for row in reversed(self._cave)])
-        
+
     def state_str(self):
         s = []
         s.append('Robot position:    %s' % str(self._robot_pos))
@@ -46,18 +46,19 @@ class Cave(object):
         s.append('Lift state:        %s' % ('Open' if self._lift_open else 'Closed'))
         s.append('Number of lambdas: %d' % self._lambda_count)
         return '\n'.join(s)
-        
+
+    @property
     def size(self):
         return (len(self._cave[0]), len(self._cave))
-        
+
     def at(self, x, y):
         try:
             if x < 0 or y < 0:
                 raise IndexError()
-            return self[y][x]
+            return self._cave[y][x]
         except IndexError:
             return CAVE_WALL
-        
+
     def analyze(self):
         self._lambda_count = 0
         for row_ix, row in enumerate(self._cave):
@@ -82,16 +83,16 @@ class Cave(object):
             else:
                 self._lift_pos = (lift_col, row_ix)
                 self._lift_open = True
-        
+
     def load_file(self, f):
         lines = [line.strip('\n') for line in f.readlines()]
         cave_width = max([len(line) for line in lines])
         self._cave = [list(line.ljust(cave_width)) for line in reversed(lines)]
         self.analyze()
-        
+
     def clone(self):
         return copy.deepcopy(self)
-            
+
     def move(self, move):
         next = self.clone()
         dx, dy = DPOS[move]
@@ -119,7 +120,7 @@ class Cave(object):
                 next._cave[y][x] = CAVE_EMPTY
                 next._cave[y][x + 2 * dx] = CAVE_ROCK
         return next.update()
-        
+
     def update(self):
         next = self.clone()
         size_x, size_y = self.size()
@@ -140,12 +141,10 @@ class Cave(object):
                 elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
                     next._cave[y][x] = CAVE_OPEN_LIFT
         return next
-        
+
 if __name__ == '__main__':
     cave = Cave()
     cave.load_file(sys.stdin)
     print cave
     print
     print cave.state_str()
-    
-    

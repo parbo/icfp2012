@@ -2,6 +2,7 @@ import os
 import sys
 import wx
 import wx.lib.newevent
+import cave
 
 # Main window title
 TITLE = 'Lambda Lifter'
@@ -66,9 +67,9 @@ class Viewer(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.OnRunBtn, id = ID_RUN_BTN)
         self.Bind(EVT_RUN_SIM, self.OnRunEvent, id = ID_RUN_EVENT)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
-        # Simulation object.
-        self.sim = None
-        self.sim_running = False
+        # Cave object.
+        self.cave = None
+        self.cave_running = False
         # Show window.
         self.Move((10, 10))
         self.Show()
@@ -87,14 +88,11 @@ class Viewer(wx.Frame):
     def OnLoadBtn(self, event):
         #print 'OnLoadBtn'
         map_path = self._map_input.GetValue()
+        self.cave = cave.Cave()
         f = open(map_path)
-        map_def = f.readlines()
+        self.cave.load_file(f)
         f.close()
-        w = max((len(line) - 1 for line in map_def))
-        h = len(map_def)
-        self.sim = []
-        for line in map_def:
-            self.sim.append(line[0:-1] + " "*(w-(len(line)-1)))
+        w, h = self.cave.size
         self._canvas.SetMapSize(w, h)
         self.UpdateStatusBar()
 
@@ -104,11 +102,11 @@ class Viewer(wx.Frame):
 
     def OnRunBtn(self, event):
         #print 'OnRunBtn'
-        if self.sim_running:
-            self.sim_running = False
+        if self.cave_running:
+            self.cave_running = False
             self._run_btn.SetLabel('Run')
         else:
-            self.sim_running = True
+            self.cave_running = True
             self._run_btn.SetLabel('Stop')
             self.AddPendingEvent(RunSimEvent(id=ID_RUN_EVENT))
 
@@ -156,23 +154,28 @@ class Canvas(wx.ScrolledWindow):
         dc.SetBackground(wx.LIGHT_GREY_BRUSH)
         dc.Clear()
         parent = self.GetParent()
-        if parent.sim is not None:
+        if parent.cave is not None:
             def bmp_from_obj(obj):
-                return {"#": self._bmp_wall,
-                        "R": self._bmp_robot,
-                        "*": self._bmp_rock,
-                        "\\": self._bmp_lambda,
-                        "L": self._bmp_closed_lift,
-                        "O": self._bmp_open_lift,
-                        ".": self._bmp_earth,
-                        " ": self._bmp_empty}[obj]
-            for y, line in enumerate(parent.sim):
-                for x, pos in enumerate(line):
-                    bmp = bmp_from_obj(pos)
+                try:
+                    return {cave.CAVE_WALL: self._bmp_wall,
+                            cave.CAVE_ROBOT: self._bmp_robot,
+                            cave.CAVE_ROCK: self._bmp_rock,
+                            cave.CAVE_LAMBDA: self._bmp_lambda,
+                            cave.CAVE_CLOSED_LIFT: self._bmp_closed_lift,
+                            cave.CAVE_OPEN_LIFT: self._bmp_open_lift,
+                            cave.CAVE_DIRT: self._bmp_earth,
+                            cave.CAVE_EMPTY: self._bmp_empty}[obj]
+                except KeyError:
+                    return self._bmp_empty
+            for y in range(self._yw):
+                for x in range(self._xw):
+                    bmp = bmp_from_obj(parent.cave.at(x, self._yw - y - 1))
                     p = self.CalcScrolledPosition((x*16, y*16))
                     dc.DrawBitmap(bmp, p.x, p.y, True)
 
     def SetMapSize(self, xw, yw):
+        self._xw = xw
+        self._yw = yw
         self._xp = 16 * xw
         self._yp = 16 * yw
         self.UpdateMapSize()
