@@ -58,6 +58,13 @@ class Cave(object):
             return self._cave[y][x]
         except IndexError:
             return CAVE_WALL
+            
+    def set(self, x, y, content):
+        self._cave[y][x] = content
+        
+    def set_robot(self, x, y):
+        self._robot_pos = (x, y)
+        self.set(x, y, CAVE_ROBOT)
 
     def analyze(self):
         self._lambda_count = 0
@@ -101,24 +108,25 @@ class Cave(object):
         new_y = y + dy
         target_content = self.at(new_x, new_y)
         if target_content in (CAVE_EMPTY, CAVE_DIRT):
-            next._robot_pos = (new_x, new_y)
-            next._cave[y][x] = CAVE_EMPTY
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
         elif target_content == CAVE_OPEN_LIFT:
-            next._robot_pos = (new_x, new_y)
-            next._cave[y][x] = CAVE_EMPTY
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
             next._completed = True
         elif target_content == CAVE_LAMBDA:
-            next._robot_pos = (new_x, new_y)
-            next._cave[y][x] = CAVE_EMPTY
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
             next._lambda_collected += 1
             next._lambda_count -= 1
             if next._lambda_count == 0:
                 self._lift_open = True
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
-                next._robot_pos = (new_x, new_y)
-                next._cave[y][x] = CAVE_EMPTY
-                next._cave[y][x + 2 * dx] = CAVE_ROCK
+                next.set_robot(new_x, new_y)
+                next.set(x, y, CAVE_EMPTY)
+                next.set(x + 2 * dx, y, CAVE_ROCK)
+        assert next.at(*next._robot_pos) == CAVE_ROBOT
         return next.update()
 
     def update(self):
@@ -127,19 +135,19 @@ class Cave(object):
         for y in range(size_y):
             for x in range(size_x):
                 if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
-                    next._cave[y][x] = CAVE_EMPTY
-                    next._cave[y - 1][x] = CAVE_ROCK
+                    next.set(x, y, CAVE_EMPTY)
+                    next.set(x, y - 1, CAVE_ROCK)
                 elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                    next._cave[y][x] = CAVE_EMPTY
-                    next._cave[y - 1][x + 1] = CAVE_ROCK
+                    next.set(x, y, CAVE_EMPTY)
+                    next.set(x + 1, y - 1, CAVE_ROCK)
                 elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y) == CAVE_EMPTY and self.at(x - 1, y - 1) == CAVE_EMPTY:
-                    next._cave[y][x] = CAVE_EMPTY
-                    next._cave[y - 1][x - 1] = CAVE_ROCK
+                    next.set(x, y, CAVE_EMPTY)
+                    next.set(x - 1, y - 1, CAVE_ROCK)
                 elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                    next._cave[y][x] = CAVE_EMPTY
-                    next._cave[y - 1][x + 1] = CAVE_ROCK
+                    next.set(x, y, CAVE_EMPTY)
+                    next.set(x + 1, y - 1, CAVE_ROCK)
                 elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
-                    next._cave[y][x] = CAVE_OPEN_LIFT
+                    next.set(x, y, CAVE_OPEN_LIFT)
         return next
 
 if __name__ == '__main__':
