@@ -45,13 +45,14 @@ class AStarSolver(Solver):
             return h
         return astar.astar(start, goal, g, hf(goal), nf(cave_))
 
-    def shortest_path(self, start, goals, cave_):
+    def find_paths(self, start, goals, cave_):
         paths = []
         for g in goals:
             p = self.find_path(start, g, cave_)
-            paths.append(p)
+            if len(p) > 0:
+                paths.append(p)
         paths.sort(lambda x, y: len(x) - len(y))
-        return paths[0]
+        return paths
 
     def find_lambdas(self, cave_):
         w, h = cave_.size
@@ -62,27 +63,41 @@ class AStarSolver(Solver):
                     lambdas.append((x, y))
         return lambdas
 
-    def follow_path(self, cave_, p, moves):
+    def follow_path(self, cave_, p):
+        moves = []
+        success = True
         for x, y in p[1:]:
             rpx, rpy = cave_._robot_pos
             if x > rpx:
                 moves.append(cave.MOVE_RIGHT)
                 cave_ = cave_.move(cave.MOVE_RIGHT)
+                if cave_._robot_pos == (rpx, rpy):
+                    success = False
             elif x < rpx:
                 moves.append(cave.MOVE_LEFT)
                 cave_ = cave_.move(cave.MOVE_LEFT)
+                if cave_._robot_pos == (rpx, rpy):
+                    success = False
             elif y > rpy:
                 moves.append(cave.MOVE_UP)
                 cave_ = cave_.move(cave.MOVE_UP)
+                if cave_._robot_pos == (rpx, rpy):
+                    success = False
             elif y < rpy:
                 moves.append(cave.MOVE_DOWN)
                 cave_ = cave_.move(cave.MOVE_DOWN)
+                if cave_._robot_pos == (rpx, rpy):
+                    success = False
             else:
                 moves.append(cave.MOVE_WAIT)
                 cave_ = cave_.move(cave.MOVE_WAIT)
+                if cave_._robot_pos == (rpx, rpy):
+                    success = False
             if cave_.completed:
+                if cave_.end_state == cave.END_STATE_LOSE:
+                    success = False
                 break
-        return cave_, moves
+        return cave_, moves, success
 
     def solve(self, cave_):
         moves = []
@@ -93,19 +108,41 @@ class AStarSolver(Solver):
                 # just bail for now
                 if len(lambdas) == 0:
                     # Take the shortest path
-                    p = self.shortest_path(cave_._robot_pos, [cave_._lift_pos], cave_)
-                    # move to it
-                    cave_, moves = self.follow_path(cave_, p, moves)
-                    return ''.join(moves)
+                    paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
+                    if len(paths) == 0:
+                        moves.append(cave.MOVE_ABORT)
+                        return cave_, ''.join(moves)
+                    new_cave_, new_moves, success = self.follow_path(cave_, paths[0])
+                    moves.extend(new_moves)
+                    return new_cave_, ''.join(moves)
                 else:
                     # Take the shortest path
-                    p = self.shortest_path(cave_._robot_pos, lambdas, cave_)
-                    # move to it
-                    cave_, moves = self.follow_path(cave_, p, moves)
+                    paths = self.find_paths(cave_._robot_pos, lambdas, cave_)
+                    if len(paths) == 0:
+                        paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
+                        if len(paths) == 0:
+                            moves.append(cave.MOVE_ABORT)
+                            return cave_, ''.join(moves)
+                        new_cave_, new_moves, success = self.follow_path(cave_, paths[0])
+                        moves.extend(new_moves)
+                        return new_cave_, ''.join(moves)
+                    taken = None
+                    for p in paths:
+                        # move to it
+                        new_cave, new_moves, success = self.follow_path(cave_, p)
+                        if success:
+                            taken = new_cave, new_moves
+                            break
+                    if taken:
+                        cave_ = taken[0]
+                        moves.extend(taken[1])
+                    else:
+                        moves.append(cave.MOVE_ABORT)
+                        return cave_, ''.join(moves)
         except SolverInterrupted:
             moves.append(cave.MOVE_ABORT)
-            return ''.join(moves)
-        return ''.join(moves)
+            return cave_, ''.join(moves)
+        return cave_, ''.join(moves)
 
 
 if __name__ == "__main__":
@@ -114,4 +151,6 @@ if __name__ == "__main__":
     c.load_file(f)
     f.close()
     s = AStarSolver()
-    print s.solve(c)
+    new_c, route = s.solve(c)
+    print route
+    print new_c.score
