@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+#from __future__ import with_statement
 import astar
 import cave
+import logging
 import math
 import signal
 import sys
+from optparse import OptionParser
 
 class SolverInterrupted(Exception):
     pass
@@ -146,10 +149,25 @@ class AStarSolver(Solver):
         return cave_, ''.join(moves)
 
 
-if __name__ == "__main__":
+def main(options, args):
+    logging.basicConfig(level=options.loglevel)
     c = cave.Cave()
-    c.load_file(sys.stdin)
+    if options.filename:
+        with open(options.filename) as f:
+            c.load_file(f)
+    else:
+        c.load_file(sys.stdin)
     s = AStarSolver()
     new_c, route = s.solve(c)
     print route
-    #print new_c.score
+    logging.info("score: %d", new_c.score)
+
+
+if __name__ == "__main__":
+    parser = OptionParser()
+    parser.add_option("-f", "--file", dest="filename",
+                      help="load map from FILE", metavar="FILE")
+    parser.add_option("-l", "--log", dest="loglevel", type="int",
+                      help="logging level", default=1000)
+    options, args = parser.parse_args()
+    main(options, args)
