@@ -64,7 +64,11 @@ class AStarSolver(Solver):
         for y in range(h):
             for x in range(w):
                 if cave_.at(x, y) == cave.CAVE_LAMBDA:
-                    lambdas.append((x, y))
+                    possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL, cave.CAVE_ROCK) and cave_.at(x + 1, y) in (cave.CAVE_WALL, cave.CAVE_ROCK))
+                    if possible:
+                        lambdas.append((x, y))
+        rpx, rpy = cave_._robot_pos
+        lambdas.sort(lambda pos1, pos2: (abs(rpx - pos1[0]) + abs(rpy - pos1[1])) - (abs(rpx - pos2[0]) + abs(rpy - pos2[1])))
         return lambdas
 
     def follow_path(self, cave_, moves, p):
@@ -102,29 +106,34 @@ class AStarSolver(Solver):
             success = True
         return new_cave, moves + move, success
 
+    def solve_recursive(self, cave_, moves):
+        pass
+
     def solve(self, cave_):
         moves = ""
         try:
             while not cave_.completed:
                 # find all the lambdas
                 lambdas = self.find_lambdas(cave_)
-                rpx, rpy = cave_._robot_pos
-                lambdas.sort(lambda pos1, pos2: (abs(rpx - pos1[0]) + abs(rpy - pos1[1])) - (abs(rpx - pos2[0]) + abs(rpy - pos2[1])))
-                logging.info("lambdas left: %d", len(lambdas))
+                logging.debug("lambdas left: %d", len(lambdas))
                 lambdas = lambdas[:20]
                 # just bail for now
                 if len(lambdas) == 0:
                     # Take the shortest path
                     paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
                     if len(paths) == 0:
+                        logging.debug("no path to lift, abort")
                         return self.move(cave_, moves, cave.MOVE_ABORT)
+                    logging.debug("no more lambdas, go to lift")
                     return self.follow_path(cave_, moves, paths[0])
                 else:
                     # Take the shortest path
                     paths = self.find_paths(cave_._robot_pos, lambdas, cave_)
                     if len(paths) == 0:
+                        logging.debug("no path to lambdas, go to lift")
                         paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
                         if len(paths) == 0:
+                            logging.debug("no path to lift, abort")
                             return self.move(cave_, moves, cave.MOVE_ABORT)
                         return self.follow_path(cave_, moves, paths[0])
                     taken = None
@@ -138,8 +147,10 @@ class AStarSolver(Solver):
                         cave_ = taken[0]
                         moves = taken[1]
                     else:
+                        logging.debug("no succesful path to lambdas, abort")
                         return self.move(cave_, moves, cave.MOVE_ABORT)
         except SolverInterrupted:
+            logging.debug("solver interrupted, abort")
             return self.move(cave_, moves, cave.MOVE_ABORT)
         return cave_, moves
 
