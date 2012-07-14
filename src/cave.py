@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import sys
 import copy
 
@@ -35,6 +36,10 @@ END_STATE_WIN = 'win'
 END_STATE_LOSE = 'lose'
 END_STATE_ABORT = 'abort'
 
+DEFAULT_WATER_LEVEL = -1
+DEFAULT_FLOOD_RATE = 0
+DEFAULT_WATERPROOF = 10
+
 class RobotDestroyed(Exception):
     pass
 
@@ -43,6 +48,10 @@ class Cave(object):
         # Public attributes
         self.score = 0
         self.end_state = None
+        self.water_level = DEFAULT_WATER_LEVEL
+        self.flood_rate = DEFAULT_FLOOD_RATE
+        self.waterproof = DEFAULT_WATERPROOF
+        
         # Private attributes
         self._cave = None
         self._robot_pos = None
