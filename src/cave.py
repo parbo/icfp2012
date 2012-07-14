@@ -116,6 +116,10 @@ class Cave(object):
     @property
     def completed(self):
         return self.end_state is not None
+    
+    @property
+    def is_drowning(self):
+        return self.water_steps >= self.water_resistance
 
     def analyze(self):
         self._lambda_count = 0
@@ -169,45 +173,69 @@ class Cave(object):
 
     def clone(self):
         return copy.deepcopy(self)
+        
+    def get_move_state(self):
+        """ Save the state before robot movement. """
+        robot_x, robot_y = self._robot_pos
+        saved_positions = [(x, robot_y) for x in range(robot_x - 2, robot_x + 3)]
+        saved_positions.extend([(robot_x, robot_y - 1), (robot_x, robot_y + 1)])
+        squares = dict([(pos, self.at(*pos)) for pos in saved_positions])
+        return (squares, self.score, self.end_state, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected)
+
+    def restore_move_state(self, state):
+        """ Restore the state as it was before robot movement. """
+        squares, score, end_state, robot_pos, lift_open, lambda_count, lambda_collected = state
+        self.score = score
+        self.end_state = end_state
+        self._robot_pos = robot_pos
+        self._lift_open = lift_open
+        self._lambda_count = lambda_count
+        self._lambda_collected = lambda_collected
+        for pos, content in squares.iteritems():
+            self.set(pos[0], pos[1], content)
 
     def move(self, move):
         if self.completed:
             return self
-        next = self.clone()
         if move == MOVE_ABORT:
+            next = self.clone()
             next.end_state = END_STATE_ABORT
             next.score += self._lambda_collected * SCORE_LAMBDA_ABORT
             return next
-        next.score += SCORE_MOVE
+        state = self.get_move_state()
+        self.score += SCORE_MOVE
         dx, dy = DPOS[move]
         x, y = self._robot_pos
         new_x = x + dx
         new_y = y + dy
         target_content = self.at(new_x, new_y)
         if target_content in (CAVE_EMPTY, CAVE_DIRT):
-            next.set_robot(new_x, new_y)
-            next.set(x, y, CAVE_EMPTY)
+            self.set_robot(new_x, new_y)
+            self.set(x, y, CAVE_EMPTY)
         elif target_content == CAVE_OPEN_LIFT:
+            next = self.clone()
             next.set_robot(new_x, new_y)
             next.set(x, y, CAVE_EMPTY)
             next.end_state = END_STATE_WIN
             next.score += self._lambda_collected * SCORE_LAMBDA_LIFT
             return next
         elif target_content == CAVE_LAMBDA:
-            next.set_robot(new_x, new_y)
-            next.set(x, y, CAVE_EMPTY)
-            next._lambda_collected += 1
-            next._lambda_count -= 1
-            if next._lambda_count == 0:
-                next._lift_open = True
-            next.score += SCORE_LAMBDA_COLLECT
+            self.set_robot(new_x, new_y)
+            self.set(x, y, CAVE_EMPTY)
+            self._lambda_collected += 1
+            self._lambda_count -= 1
+            if self._lambda_count == 0:
+                self._lift_open = True
+            self.score += SCORE_LAMBDA_COLLECT
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
-                next.set_robot(new_x, new_y)
-                next.set(x, y, CAVE_EMPTY)
-                next.set_rock(x + 2 * dx, y)
-        assert next.at(*next._robot_pos) == CAVE_ROBOT
-        return next.update()
+                self.set_robot(new_x, new_y)
+                self.set(x, y, CAVE_EMPTY)
+                self.set_rock(x + 2 * dx, y)
+        assert self.at(*self._robot_pos) == CAVE_ROBOT
+        next = self.update()
+        self.restore_move_state(state)
+        return next
 
     def update(self):
         next = self.clone()
