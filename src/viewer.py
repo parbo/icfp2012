@@ -194,10 +194,10 @@ class Canvas(wx.ScrolledWindow):
     def OnPaint(self, event):
         #print 'Canvas.OnPaint'
         dc = wx.PaintDC(self)
-        dc.SetPen(wx.BLACK_PEN)
-        dc.SetBrush(wx.LIGHT_GREY_BRUSH)
         dc.SetBackground(wx.LIGHT_GREY_BRUSH)
         dc.Clear()
+        gc = wx.GraphicsContext.Create(dc);
+        gc.SetBrush(wx.Brush(wx.Colour(0,0,255,50)))
         parent = self.GetParent()
         if parent.cave is not None:
             def bmp_from_obj(obj):
@@ -216,7 +216,12 @@ class Canvas(wx.ScrolledWindow):
                 for x in range(self._xw):
                     bmp = bmp_from_obj(parent.cave.at(x, self._yw - y - 1))
                     p = self.CalcScrolledPosition((x*16, y*16))
-                    dc.DrawBitmap(bmp, p.x, p.y, True)
+                    gc.DrawBitmap(bmp, p.x, p.y, 16, 16)
+            print parent.cave.water_level
+            if parent.cave.water_level > 0:
+                p1 = self.CalcScrolledPosition((0, self._yp))
+                p2 = self.CalcScrolledPosition((self._xp, self._yp - 16 * (parent.cave.water_level + 1)))
+                gc.DrawRectangle(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y)
 
     def SetMapSize(self, xw, yw):
         self._xw = xw
