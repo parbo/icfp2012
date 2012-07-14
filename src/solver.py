@@ -45,7 +45,7 @@ class AStarSolver(Solver):
             def h(n):
                 x, y = n
                 gx, gy = goal
-                return math.sqrt((x - gx)**2 + (y - gy)**2)
+                return abs(x - gx) + abs(y - gy)
             return h
         return astar.astar(start, goal, g, hf(goal), nf(cave_))
 
@@ -108,6 +108,10 @@ class AStarSolver(Solver):
             while not cave_.completed:
                 # find all the lambdas
                 lambdas = self.find_lambdas(cave_)
+                rpx, rpy = cave_._robot_pos
+                lambdas.sort(lambda pos1, pos2: (abs(rpx - pos1[0]) + abs(rpy - pos1[1])) - (abs(rpx - pos2[0]) + abs(rpy - pos2[1])))
+                logging.info("lambdas left: %d", len(lambdas))
+                lambdas = lambdas[:20]
                 # just bail for now
                 if len(lambdas) == 0:
                     # Take the shortest path
@@ -136,7 +140,7 @@ class AStarSolver(Solver):
                     else:
                         return self.move(cave_, moves, cave.MOVE_ABORT)
         except SolverInterrupted:
-            return self.move(cave.MOVE_ABORT)
+            return self.move(cave_, moves, cave.MOVE_ABORT)
         return cave_, moves
 
 
