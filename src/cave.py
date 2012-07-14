@@ -280,6 +280,19 @@ class Cave(object):
             self.water_steps += 1
         if self.water_steps > self.water_resistance:
             raise RobotDestroyed()
+            
+    def next_stable(self):
+        """
+        Step forward to a stable cave state, i.e. a state where no rocks have moved.
+        The function returns a tuple with the stable cave instance and the number of
+        iterations needed to get there: (stable_cave, iteration_number)
+        """
+        cave = self
+        moves = 0
+        while cave.rock_movement and not cave.completed:
+            cave = cave.move(MOVE_WAIT)
+            moves += 1
+        return (cave, moves)
 
 if __name__ == '__main__':
     cave = Cave()

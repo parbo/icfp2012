@@ -4,6 +4,10 @@ import unittest
 import cave
 
 ROUTE = 'DDDLLLLLLURRRRRRRRRRRRDDDDDDDLLLLLLLLLLLDDDRRRRRRRRRRRD'
+R = cave.MOVE_RIGHT
+L = cave.MOVE_LEFT
+U = cave.MOVE_UP
+D = cave.MOVE_DOWN
 
 class TestCave(unittest.TestCase):
     def setUp(self):
@@ -49,15 +53,29 @@ class TestCave(unittest.TestCase):
         self.assertEqual(next[-1].at(7, 13), cave.CAVE_EMPTY)
         
     def test_rock_movement(self):
-        R = cave.MOVE_RIGHT
-        L = cave.MOVE_LEFT
-        U = cave.MOVE_UP
-        D = cave.MOVE_DOWN
         move = [L, L, L, D, R, D, L, L, L, L]
         rock = [0, 0, 0, 0, 1, 0, 0, 1, 1, 1]
         for m, r in zip(move, rock):
             self.cave = self.cave.move(m)
             self.assertEqual(bool(r), self.cave.rock_movement)
+            
+    def test_next_stable(self):
+        # Test that function returns when cave is completed.
+        move = [L, L, L, D, D]
+        cv = self.cave
+        for m in move:
+            cv = cv.move(m)
+        self.assertTrue(cv.rock_movement)
+        stable_cave, n = cv.next_stable()
+        self.assertEqual(n, 0)
+        # Test normal case.
+        cv = self.cave
+        move = [D, D, D, D, D, D, R, R, R, R, U, U, U, R]
+        for m in move:
+            cv = cv.move(m)
+        self.assertTrue(cv.rock_movement)
+        stable_cave, n = cv.next_stable()
+        self.assertEqual(n, 4)
         
     def test_route(self):
         for move in ROUTE[:-1]:
