@@ -1,0 +1,8 @@
+#!/bin/sh
+
+REG_NO="96536570"
+
+folder="submissions/`date`"
+mkdir -p "${folder}"
+tar cvzf "${folder}/icfp-${REG_NO}.tgz" src/*.py install lifter PACKAGES README
+
