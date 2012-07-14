@@ -48,6 +48,17 @@ class TestCave(unittest.TestCase):
         self.assertEqual(next[-1]._robot_pos, (7, 12))
         self.assertEqual(next[-1].at(7, 13), cave.CAVE_EMPTY)
         
+    def test_rock_movement(self):
+        R = cave.MOVE_RIGHT
+        L = cave.MOVE_LEFT
+        U = cave.MOVE_UP
+        D = cave.MOVE_DOWN
+        move = [L, L, L, D, R, D, L, L, L, L]
+        rock = [0, 0, 0, 0, 1, 0, 0, 1, 1, 1]
+        for m, r in zip(move, rock):
+            self.cave = self.cave.move(m)
+            self.assertEqual(bool(r), self.cave.rock_movement)
+        
     def test_route(self):
         for move in ROUTE[:-1]:
             self.cave = self.cave.move(move)

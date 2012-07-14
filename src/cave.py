@@ -61,6 +61,8 @@ class Cave(object):
         self.flood_steps = 0
         # Number of moves under water.
         self.water_steps = 0
+        # Indicates whether at least one rock moved during the last update.
+        self.rock_movement = False
         
         # Private attributes
         self._cave = None
@@ -110,6 +112,7 @@ class Cave(object):
         
     def set_rock(self, x, y):
         self.set(x, y, CAVE_ROCK)
+        self.rock_movement = True
         if self.at(x, y - 1) == CAVE_ROBOT:
             raise RobotDestroyed()
         
@@ -180,13 +183,14 @@ class Cave(object):
         saved_positions = [(x, robot_y) for x in range(robot_x - 2, robot_x + 3)]
         saved_positions.extend([(robot_x, robot_y - 1), (robot_x, robot_y + 1)])
         squares = dict([(pos, self.at(*pos)) for pos in saved_positions])
-        return (squares, self.score, self.end_state, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected)
+        return (squares, self.score, self.end_state, self.rock_movement, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected)
 
     def restore_move_state(self, state):
         """ Restore the state as it was before robot movement. """
-        squares, score, end_state, robot_pos, lift_open, lambda_count, lambda_collected = state
+        squares, score, end_state, rock_movement, robot_pos, lift_open, lambda_count, lambda_collected = state
         self.score = score
         self.end_state = end_state
+        self.rock_movement = rock_movement
         self._robot_pos = robot_pos
         self._lift_open = lift_open
         self._lambda_count = lambda_count
@@ -209,16 +213,17 @@ class Cave(object):
         new_x = x + dx
         new_y = y + dy
         target_content = self.at(new_x, new_y)
-        if target_content in (CAVE_EMPTY, CAVE_DIRT):
-            self.set_robot(new_x, new_y)
-            self.set(x, y, CAVE_EMPTY)
-        elif target_content == CAVE_OPEN_LIFT:
+        if target_content == CAVE_OPEN_LIFT:
             next = self.clone()
             next.set_robot(new_x, new_y)
             next.set(x, y, CAVE_EMPTY)
             next.end_state = END_STATE_WIN
             next.score += self._lambda_collected * SCORE_LAMBDA_LIFT
             return next
+        self.rock_movement = False
+        if target_content in (CAVE_EMPTY, CAVE_DIRT):
+            self.set_robot(new_x, new_y)
+            self.set(x, y, CAVE_EMPTY)
         elif target_content == CAVE_LAMBDA:
             self.set_robot(new_x, new_y)
             self.set(x, y, CAVE_EMPTY)
