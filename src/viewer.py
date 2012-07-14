@@ -134,8 +134,10 @@ class Viewer(wx.Frame):
             self.MakeMove(cave.MOVE_LEFT)
         elif kc == wx.WXK_RIGHT:
             self.MakeMove(cave.MOVE_RIGHT)
-#        elif kc == wx.WXK_W:
-#            self.MakeMove(cave.MOVE_WAIT)
+        elif kc == ord('s'):
+            self.Run(int(self._step_input.GetValue()))
+        elif kc == ord('w'):
+            self.MakeMove(cave.MOVE_WAIT)
         else:
             event.Skip()
 
