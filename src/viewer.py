@@ -138,6 +138,8 @@ class Viewer(wx.Frame):
             self.Run(int(self._step_input.GetValue()))
         elif kc == ord('w'):
             self.MakeMove(cave.MOVE_WAIT)
+        elif kc == ord('a'):
+            self.MakeMove(cave.MOVE_ABORT)
         else:
             event.Skip()
 
@@ -169,6 +171,11 @@ class Viewer(wx.Frame):
 
     def UpdateStatusBar(self):
         bar = self.GetStatusBar()
+        bar.SetStatusText("Score: %s"%(self.cave.score,), 0)
+        bar.SetStatusText("State: %s"%(self.cave.end_state,), 1)
+        bar.SetStatusText("WL: %s"%(self.cave.water_level,), 2)
+        bar.SetStatusText("WR: %s/%s"%(self.cave.water_steps, self.cave.water_resistance,), 3)
+        bar.SetStatusText("FR: %s"%(self.cave.flood_rate,), 4)
 
 class Canvas(wx.ScrolledWindow):
     def __init__(self, parent):

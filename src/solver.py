@@ -25,10 +25,13 @@ class Solver(object):
 class AStarSolver(Solver):
     def __init__(self):
         Solver.__init__(self)
+        self.visited = {}
 
     def find_path(self, start, goal, cave_):
-        def g(n1, n2):
-            return 1
+        def gf(c):
+            def g(n1, n2):
+                return 1
+            return g
         def nf(c):
             def neighbours(n):
                 x, y = n
@@ -53,7 +56,7 @@ class AStarSolver(Solver):
                 gx, gy = goal
                 return abs(x - gx) + abs(y - gy)
             return h
-        return astar.astar(start, goal, g, hf(goal), nf(cave_))
+        return astar.astar(start, goal, gf(cave_), hf(goal), nf(cave_))
 
     def find_paths(self, start, goals, cave_):
         paths = []
@@ -115,7 +118,33 @@ class AStarSolver(Solver):
         return new_cave, moves + move, success, new_cave.rock_movement
 
     def solve_recursive(self, cave_, moves):
-        pass
+        try:
+            return self.visited[str(cave_)]
+        except KeyError:
+            pass
+        if cave_.completed:
+            return cave_.score, cave_, moves
+        goals = self.find_lambdas(cave_)
+        goals = goals[:5]
+        paths = self.find_paths(cave_._robot_pos, goals, cave_)
+        if len(paths) == 0:
+            # find lift
+            paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
+        scores = []
+        for p in paths:
+            new_cave, new_moves, success, replan = self.follow_path(cave_, moves, p)
+            if success or replan:
+                scores.append(self.solve_recursive(new_cave, new_moves))
+        scores.sort()
+        if len(scores) == 0:
+            new_cave, new_moves, succes, replan = self.move(cave_, moves, cave.MOVE_ABORT)
+            self.visited[str(cave_)] = (new_cave.score, new_cave, new_moves)
+            print new_cave.score
+            return new_cave.score, new_cave, new_moves
+        s, new_cave, new_moves = scores[-1]
+        self.visited[str(cave_)] = (new_cave.score, new_cave, new_moves)
+        print new_cave.score
+        return new_cave.score, new_cave, new_moves
 
     def solve(self, cave_):
         moves = ""
@@ -208,6 +237,9 @@ def main(options, args):
     print route
     logging.info("score: %d", new_c.score)
     logging.info("end state: %s", new_c.end_state)
+
+#    score, c, route = s.solve_recursive(c, "")
+#    print route, c.score, c.end_state
 
 
 if __name__ == "__main__":
