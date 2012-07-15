@@ -72,6 +72,9 @@ class Viewer(wx.Frame):
         self.cave = None
         self._cave_running = False
         self._cave_step = 0
+        # load file if there
+        if map_file:
+            self.Load(map_file)
         # Show window.
         self.Move((10, 10))
         self.Show()
@@ -90,6 +93,9 @@ class Viewer(wx.Frame):
     def OnLoadBtn(self, event):
         #print 'OnLoadBtn'
         map_path = self._map_input.GetValue()
+        self.Load(map_path)
+
+    def Load(self, map_path):
         self.cave = cave.Cave()
         f = open(map_path)
         self.cave.load_file(f)
@@ -191,6 +197,10 @@ class Canvas(wx.ScrolledWindow):
         self._bmp_robot = wx.Bitmap(os.path.join("images", "robot.jpg"));
         self._bmp_rock = wx.Bitmap(os.path.join("images", "rock.jpg"));
         self._bmp_wall = wx.Bitmap(os.path.join("images", "wall.jpg"));
+        self._bmp_beard = wx.Bitmap(os.path.join("images", "beard.jpg"));
+        self._bmp_razor = wx.Bitmap(os.path.join("images", "razor.jpg"));
+        self._bmp_trampoline = wx.Bitmap(os.path.join("images", "trampoline.jpg"));
+        self._bmp_target = wx.Bitmap(os.path.join("images", "target.jpg"));
         # Ensure scrollbars are used
         self.SetMapSize(10, 10)
 
@@ -204,12 +214,18 @@ class Canvas(wx.ScrolledWindow):
         dc.SetBackground(wx.LIGHT_GREY_BRUSH)
         dc.Clear()
         gc = wx.GraphicsContext.Create(dc);
-        gc.SetBrush(wx.Brush(wx.Colour(0,0,255,50)))
+        gc.SetFont(wx.FontFromPixelSize((12,12), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD), wx.WHITE)
         parent = self.GetParent()
         if parent.cave is not None:
             def bmp_from_obj(obj):
+                if cave.is_trampoline(obj):
+                    return self._bmp_trampoline
+                elif cave.is_target(obj):
+                    return self._bmp_target
                 try:
                     return {cave.CAVE_WALL: self._bmp_wall,
+                            cave.CAVE_BEARD: self._bmp_beard,
+                            cave.CAVE_RAZOR: self._bmp_razor,
                             cave.CAVE_ROBOT: self._bmp_robot,
                             cave.CAVE_ROCK: self._bmp_rock,
                             cave.CAVE_LAMBDA: self._bmp_lambda,
@@ -221,11 +237,14 @@ class Canvas(wx.ScrolledWindow):
                     return self._bmp_empty
             for y in range(self._yw):
                 for x in range(self._xw):
-                    bmp = bmp_from_obj(parent.cave.at(x, self._yw - y - 1))
+                    obj = parent.cave.at(x, self._yw - y - 1)
+                    bmp = bmp_from_obj(obj)
                     p = self.CalcScrolledPosition((x*16, y*16))
                     gc.DrawBitmap(bmp, p.x, p.y, 16, 16)
-            print parent.cave.water_level
+                    if cave.is_trampoline(obj) or cave.is_target(obj):
+                        gc.DrawText(obj, p.x, p.y, gc.CreateBrush(wx.Brush(wx.Colour(0,0,255,255))))
             if parent.cave.water_level > 0:
+                gc.SetBrush(wx.Brush(wx.Colour(0,0,255,50)))
                 p1 = self.CalcScrolledPosition((0, self._yp))
                 p2 = self.CalcScrolledPosition((self._xp, self._yp - 16 * (parent.cave.water_level + 1)))
                 gc.DrawRectangle(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y)
