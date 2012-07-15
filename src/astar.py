@@ -57,7 +57,7 @@ def astar(start, goal, g_fcn, h_fcn, find_neighbours_fcn):
                 came_from[neighbour] = node
                 g_score[neighbour] = new_g
 
-    return []
+    return tuple()
 
 
 if __name__=="__main__":
