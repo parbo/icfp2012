@@ -31,6 +31,14 @@ class TestCave(unittest.TestCase):
         cave_map = open('../maps/beard1.map', 'r')
         self.beard_cave.load_file(cave_map)
         cave_map.close()
+        self.trampoline_cave = cave.Cave()
+        cave_map = open('../maps/trampoline1.map', 'r')
+        self.trampoline_cave.load_file(cave_map)
+        cave_map.close()
+        self.horock_cave = cave.Cave()
+        cave_map = open('../maps/horock1.map', 'r')
+        self.horock_cave.load_file(cave_map)
+        cave_map.close()
         
     def test_load(self):
         self.assertEqual(str(self.cave), self.cave_str)
@@ -158,6 +166,26 @@ class TestCave(unittest.TestCase):
         self.assertEqual(cv.at(4, 2), cave.CAVE_EMPTY)
         self.assertEqual(cv.at(4, 1), cave.CAVE_EMPTY)
         self.assertEqual(cv.at(5, 1), cave.CAVE_EMPTY)
+        
+    def test_trampoline(self):
+        self.assertEqual(self.trampoline_cave.at(3, 3), 'A')
+        self.assertEqual(self.trampoline_cave.at(8, 3), 'B')
+        self.assertEqual(self.trampoline_cave.at(15, 2), 'C')
+        self.assertEqual(self.trampoline_cave.at(15, 1), '1')
+        self.assertEqual(self.trampoline_cave.at(5, 2), '2')
+        move = [D, L, L]
+        cv = apply_moves(self.trampoline_cave, move)
+        self.assertEqual(cv.at(3, 3), cave.CAVE_ROCK)
+        self.assertEqual(cv.at(8, 3), cave.CAVE_ROCK)
+        self.assertEqual(cv.at(15, 2), 'C')
+        self.assertEqual(cv.at(15, 1), cave.CAVE_ROBOT)
+        self.assertEqual(cv.at(5, 2), '2')
+        
+    def test_lambda_rock(self):
+        self.assertEqual(self.horock_cave.at(4, 3), cave.CAVE_DIRT)
+        move = [R, R, R, R, R, U, U, R, R, L]
+        cv = apply_moves(self.horock_cave, move)
+        self.assertEqual(cv.at(4, 3), cave.CAVE_LAMBDA)
                 
 if __name__ == '__main__':
     #unittest.main()
