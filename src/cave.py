@@ -3,6 +3,7 @@ import sys
 import copy
 import re
 import array
+from collections import defaultdict
 
 import astar
 
@@ -115,8 +116,10 @@ class Cave(object):
         self.beard_growth = self.beard_growth_rate - 1
         # Number of razors carried by the robot.
         self.razors_carried = 0
-        # Trampoline/target mapping.
+        # Trampoline/target mapping (trampoline -> target).
         self._trampoline = {}
+        # Inverse trampoline/target mapping (target -> list of trampolines).
+        self._target_trampoline = defaultdict(list)
         # Trampoline/target postions.
         self._trampoline_pos = {}
         self._trampoline_target_pos = {}
@@ -141,7 +144,8 @@ class Cave(object):
         if len(self._trampoline) > 0:
             s.append('Trampolines:       %s' % ', '.join(['%s->%s' % (tr, tg) for tr, tg in sorted(self._trampoline.iteritems())]))
             s.append('Positions:         %s' % ', '.join(['%s->(%d,%d)' % (tr, p[0], p[1]) for tr, p in sorted(self._trampoline_pos.iteritems())]))
-            s.append('Targets:           %s' % ', '.join(['%s->(%d,%d)' % (tg, p[0], p[1]) for tg, p in sorted(self._trampoline_target_pos.iteritems())]))
+            s.append('Targets:           %s' % ', '.join(['%s->%s' % (tg, trl) for tg, trl in sorted(self._target_trampoline.iteritems())]))
+            s.append('Positions:         %s' % ', '.join(['%s->(%d,%d)' % (tg, p[0], p[1]) for tg, p in sorted(self._trampoline_target_pos.iteritems())]))
         return '\n'.join(s)
 
     @property
@@ -201,10 +205,16 @@ class Cave(object):
         return self.water_steps >= self.water_resistance
     
     def trampoline_target(self, trampoline):
+        """ Get the target ID of a given trampoline. """
         return self._trampoline.get(trampoline)
     
     def trampoline_target_pos(self, trampoline):
+        """ Get the target position of a given trampoline. """
         return self._trampoline_target_pos[self._trampoline[trampoline]]
+        
+    def target_trampolines(self, target):
+        """ Get a list of trampolines that can reach a given target. """
+        return self._target_trampoline.get(target, [])
 
     def analyze(self):
         self._lambda_count = 0
@@ -252,7 +262,10 @@ class Cave(object):
                     continue
                 m = RE_TRAMPOLINE.match(line)
                 if m:
-                    self._trampoline[m.group(1)] = m.group(2)
+                    trampoline = m.group(1)
+                    target = m.group(2)
+                    self._trampoline[trampoline] = target
+                    self._target_trampoline[target].append(trampoline)
                     continue
                 m = RE_BEARD_GROWTH.match(line)
                 if m:
