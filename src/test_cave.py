@@ -9,17 +9,27 @@ L = cave.MOVE_LEFT
 U = cave.MOVE_UP
 D = cave.MOVE_DOWN
 
+def apply_moves(cave, moves):
+    c = cave
+    for move in moves:
+        c = c.move(move)
+    return c
+
 class TestCave(unittest.TestCase):
     def setUp(self):
         self.cave = cave.Cave()
         cave_map = open('../maps/task_desc.map', 'r')
         self.cave.load_file(cave_map)
         cave_map.seek(0)
-        self.cave_str = cave_map.read().strip('\n')
+        self.cave_str = cave_map.read().strip('\n\r')
         cave_map.close()
         self.water_cave = cave.Cave()
         cave_map = open('../maps/flood1.map', 'r')
         self.water_cave.load_file(cave_map)
+        cave_map.close()
+        self.beard_cave = cave.Cave()
+        cave_map = open('../maps/beard1.map', 'r')
+        self.beard_cave.load_file(cave_map)
         cave_map.close()
         
     def test_load(self):
@@ -62,24 +72,19 @@ class TestCave(unittest.TestCase):
     def test_next_stable(self):
         # Test that function returns when cave is completed.
         move = [L, L, L, D, D]
-        cv = self.cave
-        for m in move:
-            cv = cv.move(m)
+        cv = apply_moves(self.cave, move)
         self.assertTrue(cv.rock_movement)
         stable_cave, n = cv.next_stable()
         self.assertEqual(n, 0)
         # Test normal case.
-        cv = self.cave
         move = [D, D, D, D, D, D, R, R, R, R, U, U, U, R]
-        for m in move:
-            cv = cv.move(m)
+        cv = apply_moves(self.cave, move)
         self.assertTrue(cv.rock_movement)
         stable_cave, n = cv.next_stable()
         self.assertEqual(n, 4)
         
     def test_route(self):
-        for move in ROUTE[:-1]:
-            self.cave = self.cave.move(move)
+        self.cave = apply_moves(self.cave, ROUTE[:-1])
         self.assertEqual(self.cave._lambda_count, 0)
         self.assertTrue(self.cave._lift_open)
         self.assertEqual(self.cave.at(13, 1), cave.CAVE_ROBOT)
@@ -108,6 +113,52 @@ class TestCave(unittest.TestCase):
         self.assertTrue(self.water_cave.completed)
         self.assertEqual(self.water_cave.end_state, cave.END_STATE_LOSE)
         
+    def test_collect_razor(self):
+        self.assertEqual(self.beard_cave.razors_carried, 0)
+        move = [R, D, L, L, D]
+        cv = apply_moves(self.beard_cave, move)
+        self.assertEqual(cv.razors_carried, 1)
+        
+    def test_beard_growth(self):
+        self.assertEqual(self.beard_cave.at(4, 2), cave.CAVE_BEARD)
+        self.assertEqual(self.beard_cave.at(4, 1), cave.CAVE_EMPTY)
+        self.assertEqual(self.beard_cave.at(5, 1), cave.CAVE_EMPTY)
+        cv = apply_moves(self.beard_cave, (self.beard_cave.beard_growth_rate - 1) * cave.MOVE_WAIT)
+        self.assertEqual(cv.at(4, 2), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 1), cave.CAVE_EMPTY)
+        self.assertEqual(cv.at(5, 1), cave.CAVE_EMPTY)
+        cv = cv.move(cave.MOVE_WAIT)
+        self.assertEqual(cv.at(4, 2), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 1), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(5, 1), cave.CAVE_BEARD)
+        
+    def test_shave(self):
+        move = [R, R, D, D, D, D, R, D]
+        cv = apply_moves(self.beard_cave, move)
+        cv = apply_moves(cv, (self.beard_cave.beard_growth_rate) * cave.MOVE_WAIT)
+        self.assertEqual(cv.at(5, 2), cave.CAVE_ROBOT)
+        self.assertEqual(cv.at(4, 3), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(5, 3), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 2), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 1), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(5, 1), cave.CAVE_BEARD)
+        cv = cv.move(cave.MOVE_SHAVE)
+        # No razor -> shave will fail.
+        self.assertEqual(cv.at(5, 2), cave.CAVE_ROBOT)
+        self.assertEqual(cv.at(4, 3), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(5, 3), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 2), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(4, 1), cave.CAVE_BEARD)
+        self.assertEqual(cv.at(5, 1), cave.CAVE_BEARD)
+        cv.razors_carried = 1
+        cv = cv.move(cave.MOVE_SHAVE)
+        self.assertEqual(cv.at(5, 2), cave.CAVE_ROBOT)
+        self.assertEqual(cv.at(4, 3), cave.CAVE_EMPTY)
+        self.assertEqual(cv.at(5, 3), cave.CAVE_EMPTY)
+        self.assertEqual(cv.at(4, 2), cave.CAVE_EMPTY)
+        self.assertEqual(cv.at(4, 1), cave.CAVE_EMPTY)
+        self.assertEqual(cv.at(5, 1), cave.CAVE_EMPTY)
+                
 if __name__ == '__main__':
     #unittest.main()
     suite = unittest.TestLoader().loadTestsFromTestCase(TestCave)

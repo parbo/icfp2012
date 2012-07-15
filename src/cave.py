@@ -25,6 +25,7 @@ MOVE_LEFT = 'L'
 MOVE_RIGHT = 'R'
 MOVE_UP = 'U'
 MOVE_DOWN = 'D'
+MOVE_SHAVE = 'S'
 MOVE_WAIT = 'W'
 MOVE_ABORT = 'A'
 
@@ -33,6 +34,7 @@ DPOS = {
     MOVE_RIGHT: (1, 0),
     MOVE_UP: (0, 1),
     MOVE_DOWN: (0, -1),
+    MOVE_SHAVE: (0, 0),
     MOVE_WAIT: (0, 0),
     MOVE_ABORT: (0, 0)
 }
@@ -42,24 +44,33 @@ SCORE_LAMBDA_COLLECT = 25
 SCORE_LAMBDA_ABORT = 25
 SCORE_LAMBDA_LIFT = 50
 
-END_STATE_WIN = 'win'
-END_STATE_LOSE = 'lose'
-END_STATE_ABORT = 'abort'
+END_STATE_WIN = 'Win'
+END_STATE_LOSE = 'Lose'
+END_STATE_ABORT = 'Abort'
 
 DEFAULT_WATER_LEVEL = -1
 DEFAULT_FLOOD_RATE = 0
 DEFAULT_WATER_RESISTANCE = 10
+DEFAULT_BEARD_GROWTH_RATE = 25
 
 RE_WATER_LEVEL = re.compile(r'Water (\d+)')
 RE_FLOOD_RATE = re.compile(r'Flooding (\d+)')
 RE_WATER_RESISTANCE = re.compile(r'Waterproof (\d+)')
 RE_TRAMPOLINE = re.compile(r'Trampoline ([A-I]) targets (\d)')
+RE_BEARD_GROWTH = re.compile(r'Growth (\d+)')
+RE_RAZORS = re.compile(r'Razors (\d+)')
 
 def is_trampoline(content):
     return content in CAVE_TRAMPOLINE_CHARS
 
 def is_target(content):
     return content in CAVE_TARGET_CHARS
+
+def surrounding_squares(x, y):
+    for ys in range(y - 1, y + 2):
+        for xs in range(x - 1, x + 2):
+            if xs != x or ys != y:
+                yield (xs, ys)
 
 class RobotDestroyed(Exception):
     pass
@@ -83,6 +94,11 @@ class Cave(object):
         self._lift_open = False
         self._lambda_count = 0
         self._lambda_collected = 0
+        # Beard parameters.
+        self.beard_growth_rate = DEFAULT_BEARD_GROWTH_RATE
+        self.beard_growth = self.beard_growth_rate - 1
+        # Number of razors carried by the robot.
+        self.razors_carried = 0
 
         # Private attributes
         self._cave = None
@@ -99,6 +115,8 @@ class Cave(object):
         s.append('Water resistance:  %d' % self.water_resistance)
         s.append('Water level:       %d' % self.water_level)
         s.append('Flood rate:        %d' % self.flood_rate)
+        s.append('Beard growth rate: %d' % self.beard_growth_rate)
+        s.append('Initial razors:    %d' % self.razors_carried)
         return '\n'.join(s)
 
     @property
@@ -167,7 +185,7 @@ class Cave(object):
     def load_file(self, f):
         cave_lines = []
         for line in f.readlines():
-            line = line.strip('\n')
+            line = line.strip('\n\r')
             if self.is_cave_str(line):
                 cave_lines.append(line)
             else:
@@ -182,6 +200,20 @@ class Cave(object):
                 m = RE_FLOOD_RATE.match(line)
                 if m:
                     self.flood_rate = int(m.group(1))
+                    continue
+                m = RE_TRAMPOLINE.match(line)
+                if m:
+                    #self.flood_rate = int(m.group(1))
+                    continue
+                m = RE_BEARD_GROWTH.match(line)
+                if m:
+                    self.beard_growth_rate = int(m.group(1))
+                    self.beard_growth = self.beard_growth_rate - 1
+                    continue
+                m = RE_RAZORS.match(line)
+                if m:
+                    self.razors_carried = int(m.group(1))
+                    continue
         cave_width = max([len(line) for line in cave_lines])
         self._cave = [list(line.ljust(cave_width)) for line in reversed(cave_lines)]
         self.analyze()
@@ -198,11 +230,11 @@ class Cave(object):
         saved_positions = [(x, robot_y) for x in range(robot_x - 2, robot_x + 3)]
         saved_positions.extend([(robot_x, robot_y - 1), (robot_x, robot_y + 1)])
         squares = dict([(pos, self.at(*pos)) for pos in saved_positions])
-        return (squares, self.score, self.end_state, self.rock_movement, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected)
+        return (squares, self.score, self.end_state, self.rock_movement, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected, self.razors_carried)
 
     def restore_move_state(self, state):
         """ Restore the state as it was before robot movement. """
-        squares, score, end_state, rock_movement, robot_pos, lift_open, lambda_count, lambda_collected = state
+        squares, score, end_state, rock_movement, robot_pos, lift_open, lambda_count, lambda_collected, razors_carried = state
         self.score = score
         self.end_state = end_state
         self.rock_movement = rock_movement
@@ -210,6 +242,7 @@ class Cave(object):
         self._lift_open = lift_open
         self._lambda_count = lambda_count
         self._lambda_collected = lambda_collected
+        self.razors_carried = razors_carried
         for pos, content in squares.iteritems():
             self.set(pos[0], pos[1], content)
 
@@ -247,11 +280,20 @@ class Cave(object):
             if self._lambda_count == 0:
                 self._lift_open = True
             self.score += SCORE_LAMBDA_COLLECT
+        elif target_content == CAVE_RAZOR:
+            self.set_robot(new_x, new_y)
+            self.set(x, y, CAVE_EMPTY)
+            self.razors_carried += 1
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
                 self.set_robot(new_x, new_y)
                 self.set(x, y, CAVE_EMPTY)
                 self.set_rock(x + 2 * dx, y)
+        if move == MOVE_SHAVE and self.razors_carried > 0:
+            self.razors_carried -= 1
+            for x, y in surrounding_squares(new_x, new_y):
+                if self.at(x, y) == CAVE_BEARD:
+                    self.set(x, y, CAVE_EMPTY)
         assert self.at(*self._robot_pos) == CAVE_ROBOT
         next = self.update()
         self.restore_move_state(state)
@@ -259,6 +301,12 @@ class Cave(object):
 
     def update(self):
         next = self.clone()
+        beard_growth = False
+        if next.beard_growth == 0:
+            beard_growth = True
+            next.beard_growth = self.beard_growth_rate - 1
+        else:
+            next.beard_growth -= 1
         try:
             next.update_water()
             size_x, size_y = self.size
@@ -278,23 +326,31 @@ class Cave(object):
                         next.set_rock(x + 1, y - 1)
                     elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
                         next.set(x, y, CAVE_OPEN_LIFT)
+                    elif self.at(x, y) == CAVE_BEARD and beard_growth:
+                        next.grow_beard(x, y)
         except RobotDestroyed:
             next.end_state = END_STATE_LOSE
         return next
     
     def update_water(self):
+        robot_x, robot_y = self._robot_pos
+        # The robot may have left the water during robot movement.
+        if robot_y > self.water_level:
+            self.water_steps = 0
         if self.flood_rate > 0:
             self.flood_steps += 1
             if self.flood_steps >= self.flood_rate:
                 self.flood_steps = 0
                 self.water_level += 1
-        robot_x, robot_y = self._robot_pos
-        if robot_y > self.water_level:
-            self.water_steps = 0
-        else:
+        if robot_y <= self.water_level:
             self.water_steps += 1
         if self.water_steps > self.water_resistance:
             raise RobotDestroyed()
+            
+    def grow_beard(self, beard_x, beard_y):
+        for x, y in surrounding_squares(beard_x, beard_y):
+            if self.at(x, y) == CAVE_EMPTY:
+                self.set(x, y, CAVE_BEARD)
             
     def next_stable(self):
         """
