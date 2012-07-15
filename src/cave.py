@@ -225,6 +225,13 @@ class Cave(object):
         """ Get a list of trampolines that can reach a given target. """
         return self._target_trampoline.get(target, [])
 
+    def trampoline_from_pos(self, pos):
+        """Returns trampoline id from position"""
+        for k, v in self._trampoline_pos.items():
+            if v == pos:
+                return k
+        return None
+
     def analyze(self):
         self._lambda_count = 0
         for y, row in enumerate(self._cave):
@@ -292,19 +299,22 @@ class Cave(object):
     def is_cave_str(self, s):
         return len(s) > 0 and set(s) <= CAVE_CHARS
 
-    def robot_move_cost(self, move, pos=None):
+    def robot_move_cost(self, move, target='', pos=None):
         """This returns the cost of the move, or -1 if impossible"""
         if pos is None:
             pos = self._robot_pos
         rpx, rpy = pos
         if move in (MOVE_WAIT, MOVE_ABORT):
             return 0
-        # don't go down when a rock is above
-        if move == MOVE_DOWN:
-            if self.at(rpx, rpy+1) in CAVE_ANY_ROCK:
-                return -1
         dx, dy = DPOS[move]
         obj = self.at(rpx+dx, rpy+dy)
+        # don't go down when a rock is above
+        # unless to a lift or trampoline
+        if move == MOVE_DOWN:
+            if self.at(rpx, rpy+1) in CAVE_ANY_ROCK or (self.at(rpx+1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx+1, rpy) in CAVE_ANY_ROCK) or (self.at(rpx-1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx-1, rpy) in CAVE_ANY_ROCK):
+                if obj == CAVE_OPEN_LIFT or obj in CAVE_TRAMPOLINE_CHARS:
+                    return 1
+                return -1
         # rocks can be pushed, but not to block the lift
         if move in (MOVE_RIGHT, MOVE_LEFT):
             if obj in CAVE_ANY_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
@@ -314,11 +324,17 @@ class Cave(object):
         # it's possible to go to any occupiable object
         if is_occupiable(obj):
             return 1
+        # we can move to a position with a robot
+        if obj == CAVE_ROBOT:
+            return 0
+        if obj == target:
+            return 1
+        return -1
 
     def get_possible_robot_moves(self, pos=None):
         if pos is None:
             pos = self._robot_pos
-        return [m for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT] if self.robot_move_cost(m, pos) >= 0]
+        return [m for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT] if self.robot_move_cost(m, '', pos) >= 0]
 
     def find_path(self, goal, pos=None):
         def gf(c):
@@ -327,7 +343,7 @@ class Cave(object):
                 dy = n2[1] - n1[1]
                 try:
                     m = RDPOS[(dx, dy)]
-                    return c.robot_move_cost(m, n1)
+                    return c.robot_move_cost(m, c.at(*goal), n1)
                 except KeyError:
                     pass
                 return 1
@@ -338,8 +354,8 @@ class Cave(object):
                 nb = []
                 w, h = c.size
                 for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT]:
-                    if c.robot_move_cost(m, (x, y)) >= 0:
-                        dx, dy = DPOS[m]
+                    dx, dy = DPOS[m]
+                    if c.robot_move_cost(m, c.at(*goal), (x, y)) >= 0:
                         nb.append((x+dx, y+dy))
                 return nb
             return neighbours

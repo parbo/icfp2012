@@ -12,15 +12,20 @@ class SolverInterrupted(Exception):
     pass
 
 class Target(object):
-    def __init__(self, pos, obj):
+    def __init__(self, pos, obj, path):
         self.pos = pos
         self.obj = obj
+        self.path = path
+
+    def __str__(self):
+        return "pos: %s, obj: %s, path: %s"%(self.pos, self.obj, self.path)
 
 class Solver(object):
     def _signal_handler(self, signal, frame):
         raise SolverInterrupted()
 
     def __init__(self):
+        self.interrupted = False
         signal.signal(signal.SIGINT, self._signal_handler)
 
     def solve(self, cave):
@@ -67,6 +72,12 @@ class AStarSolver(Solver):
         lambdas.sort(get_lambda_comparer(cave_, pos, cave_._lift_pos))
         return lambdas
 
+    def move_success(self, cave_, expected):
+        trampoline_id = cave_.trampoline_from_pos(expected)
+        if trampoline_id is not None and trampoline_id in cave.CAVE_TRAMPOLINE_CHARS:
+            expected = cave_.trampoline_target_pos(trampoline_id)
+        return cave_._robot_pos == expected
+
     def follow_path(self, cave_, moves, p):
         replan = False
         for x, y in p[1:]:
@@ -91,13 +102,14 @@ class AStarSolver(Solver):
 
             if cave_.completed:
                 break
-        return cave_, moves, cave_._robot_pos == p[-1], replan
+        success = self.move_success(cave_, p[-1])
+        return cave_, moves, success, replan
 
     def move(self, cave_, moves, move):
         new_cave = cave_.move(move)
         dx, dy = cave.DPOS[move]
         rpx, rpy = cave_._robot_pos
-        success = new_cave._robot_pos == (rpx+dx, rpy+dy)
+        success = self.move_success(new_cave, (rpx+dx, rpy+dy))
         return new_cave, moves + move, success, new_cave.rock_movement
 
     def exit_blocked(self, cave_, pos):
@@ -117,6 +129,15 @@ class AStarSolver(Solver):
         lambdas = self.find_lambdas(cave_)
         lambdas = lambdas[:20]
 
+        path_lengths = {}
+        for lmb in lambdas:
+            p = cave_.find_path(lmb)
+            if p:
+                path_lengths[lmb] = len(p)
+            else:
+                path_lengths[lmb] = 10000000
+        lambdas.sort(key=lambda x: path_lengths[x])
+
         # find stuff we have to clear to make an exit from those lambdas
         # throw away the ones we can't exit from
         unblockable = {}
@@ -133,40 +154,64 @@ class AStarSolver(Solver):
                 else:
                     blocked.add((x, y))
 
-        # assemble a list of targets
+        # assemble a list of targets with paths
         target_list = []
         for lmb in lambdas:
             if lmb in blocked:
+                logging.debug("lambda %s is blocked", lmb)
                 continue
+            positions = []
             try:
-                unblocker = unblockable[lmb]
-                target_list.append(Target(unblocker, cave_.at(*unblocker)))
+                positions.append(unblockable[lmb])
             except KeyError:
                 pass
-            target_list.append(Target(lmb, cave_.at(*lmb)))
-            break
+            positions.append(lmb)
+            curr = cave_._robot_pos
+            tentative = []
+            for pos in positions:
+                p = cave_.find_path(pos, curr)
+                if p:
+                    tentative.append(Target(pos, cave_.at(*pos), p))
+                    curr = pos
+                else:
+                    logging.debug("no path %s -> %s", curr, pos)
+                    break
+            if len(tentative) == len(positions):
+                target_list = tentative
+                break
 
         if target_list:
             return target_list
 
-        # trampolines = self.find_stuff(cave_, cave.CAVE_TRAMPOLINE_CHARS)
-        # targets = self.find_stuff(cave_, cave.CAVE_TARGET_CHARS)
-        # for t in target:
-        #     lambdas = find_lambdas(cave_, t)
-        #     print lambdas
-        #     for l in lambdas:
-        #         path = cave_.find_path(l, t)
-        #         if len(path) > 0:
-        #             for tr in trampolines:
-        #                 if 
-        #                 path = cave_.find_path(tr)
-        #                 if len(path) > 0:
-        #                     return [tr]
+        # If no targets, wait until stable
+        if cave_.rock_movement:
+            logging.debug("no targets, wait until stable")
+            return [Target(cave_._robot_pos, cave.CAVE_ROBOT, tuple())]
+
+        # no suitable targets, try a trampoline
+        targets = self.find_stuff(cave_, cave.CAVE_TARGET_CHARS)
+        for t in targets:
+            lambdas = self.find_lambdas(cave_, t)
+            for l in lambdas:
+                path = cave_.find_path(l, t)
+                if path:
+                    logging.debug("found path from target to lambda")
+                    trampolines = cave_.target_trampolines(cave_.at(*t))
+                    logging.debug("trampolines: %s", trampolines)
+                    for tr in [cave_._trampoline_pos[tramp] for tramp in trampolines]:
+                        path = cave_.find_path(tr)
+                        if path:
+                            logging.debug("found a trampoline, taking it!")
+                            return [Target(tr, cave_.at(*tr), path)]
 
         # no lambdas, find open lift
         if cave_.at(*cave_._lift_pos) == cave.CAVE_OPEN_LIFT:
-            logging.debug("go to open lift")
-            return [Target(cave_._lift_pos, cave_.at(*cave_._lift_pos))]
+            p = cave_.find_path(cave_._lift_pos)
+            if p:
+                logging.debug("go to open lift")
+                return [Target(cave_._lift_pos, cave_.at(*cave_._lift_pos), p)]
+            else:
+                logging.debug("no path to open lift")
         else:
             logging.debug("lift not open")
         # no path
@@ -184,21 +229,26 @@ class AStarSolver(Solver):
                 # find target list to traverse
                 target_list = self.find_target_list(cave_)
                 if not target_list:
+                    logging.debug("no target list, aborting")
                     return self.move(cave_, moves, cave.MOVE_ABORT)
                 for target in target_list:
+                    if target.pos == cave_._robot_pos:
+                        logging.debug("no move, just wait")
+                        cave_, moves, success, replan = self.move(cave_, moves, cave.MOVE_WAIT)
+                        continue
                     # reset panic count for new targets
                     self.panic_count = 0
                     target_done = False
                     need_panic = False
+                    path = target.path
                     while not target_done:
-                        logging.debug("trying to get to target '%s' at %s", target.obj, target.pos)
-                        path = cave_.find_path(target.pos)
+                        logging.debug("trying to get from %s to target %s, %s", cave_._robot_pos, target.pos, target.obj)
                         if path:
-                            logging.debug("found path")
+                            logging.debug("path: %s", path)
                             # move to it
                             new_cave, new_moves, success, replan = self.follow_path(cave_, moves, path)
                             if success and new_cave.end_state != cave.END_STATE_LOSE:
-                                logging.debug("successfully followed path %s", path)
+                                logging.debug("successfully followed path to %s", new_cave._robot_pos)
                                 cave_ = new_cave
                                 moves = new_moves
                                 target_done = True
@@ -206,6 +256,9 @@ class AStarSolver(Solver):
                                 logging.debug("something changed, replanning")
                                 cave_ = new_cave
                                 moves = new_moves
+                                logging.debug("find path: %s -> %s", cave_._robot_pos, target.pos)
+                                path = cave_.find_path(target.pos)
+                                logging.debug("found path: %s", path)
                             else:
                                 need_panic = True
                         else:
@@ -214,19 +267,25 @@ class AStarSolver(Solver):
                         if need_panic:
                             # no strategy works, just move a step and see what happens
                             for m in panic_moves[panic_count:]:
-                                logging.debug("making panic move: %s", m)
                                 panic_count += 1
+                                if cave_.robot_move_cost(m) < 0:
+                                    continue
+                                logging.debug("making panic move: %s", m)
                                 rpx, rpy = cave_._robot_pos
                                 new_cave, new_moves, success, replan = self.move(cave_, moves, m)
+                                logging.debug("panic move: %s, %s", success, replan)
                                 if (success or replan) and not new_cave.end_state == cave.END_STATE_LOSE:
                                     cave_ = new_cave
                                     moves = new_moves
+                                    path = cave_.find_path(target.pos)
                                     break
                             else:
                                 # TODO: replan on a higher level
+                                logging.debug("panic didn't work, aborting")
                                 return self.move(cave_, moves, cave.MOVE_ABORT)
         except SolverInterrupted:
             logging.debug("solver interrupted, abort")
+            self.interrupted = True
             return self.move(cave_, moves, cave.MOVE_ABORT)
         logging.debug("end state: %s", cave_.end_state)
         return cave_, moves, True, False
@@ -241,21 +300,23 @@ def main(options, args):
             c.load_file(f)
     else:
         c.load_file(sys.stdin)
-    s = AStarSolver(False)
-    c1, route1, success, replan = s.solve(c)
-    s = AStarSolver(True)
-    c2, route2, success, replan = s.solve(c)
-    if c1.score > c2.score:
-        print route1
-    else:
-        print route2
-    logging.info("scores: %d", c1.score)
-    logging.info("end state 1: %s", c1.end_state)
-    logging.info("score 2: %d", c2.score)
-    logging.info("end state 2: %s", c2.end_state)
+    solvers = [AStarSolver(False), AStarSolver(True)]
+    solutions = []
+    for s in solvers:
+        logging.debug("starting solver..")
+        new_c, route, success, replan = s.solve(c)
+        solutions.append((new_c.score, new_c, route))
+        if s.interrupted:
+            logging.debug("abort calculations!")
+            break
 
-#    score, c, route = s.solve_recursive(c, "")
-#    print route, c.score, c.end_state
+    solutions.sort(reverse=True)
+    if solutions:
+        print solutions[0][2]
+    for s in solutions:
+        score, new_c, route = s
+        logging.info("score: %d", score)
+        logging.info("end state: %s", new_c.end_state)
 
 
 if __name__ == "__main__":
