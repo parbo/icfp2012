@@ -11,7 +11,15 @@ CAVE_LAMBDA = '\\'
 CAVE_ROBOT = 'R'
 CAVE_CLOSED_LIFT = 'L'
 CAVE_OPEN_LIFT = 'O'
-CAVE_CHARS = frozenset([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE_ROBOT, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT])
+CAVE_BEARD = 'W'
+CAVE_RAZOR = '!'
+
+CAVE_TRAMPOLINE_CHARS = 'ABCDEFGHI'
+CAVE_TARGET_CHARS = '123456789'
+
+CAVE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE_ROBOT, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT, CAVE_BEARD, CAVE_RAZOR])
+CAVE_CHARS.update(CAVE_TRAMPOLINE_CHARS)
+CAVE_CHARS.update(CAVE_TARGET_CHARS)
 
 MOVE_LEFT = 'L'
 MOVE_RIGHT = 'R'
@@ -45,6 +53,13 @@ DEFAULT_WATER_RESISTANCE = 10
 RE_WATER_LEVEL = re.compile(r'Water (\d+)')
 RE_FLOOD_RATE = re.compile(r'Flooding (\d+)')
 RE_WATER_RESISTANCE = re.compile(r'Waterproof (\d+)')
+RE_TRAMPOLINE = re.compile(r'Trampoline ([A-I]) targets (\d)')
+
+def is_trampoline(content):
+    return content in CAVE_TRAMPOLINE_CHARS
+
+def is_target(content):
+    return content in CAVE_TARGET_CHARS
 
 class RobotDestroyed(Exception):
     pass
@@ -63,14 +78,14 @@ class Cave(object):
         self.water_steps = 0
         # Indicates whether at least one rock moved during the last update.
         self.rock_movement = False
-        
-        # Private attributes
-        self._cave = None
         self._robot_pos = None
         self._lift_pos = None
         self._lift_open = False
         self._lambda_count = 0
         self._lambda_collected = 0
+
+        # Private attributes
+        self._cave = None
 
     def __str__(self):
         return '\n'.join([''.join(row) for row in reversed(self._cave)])
