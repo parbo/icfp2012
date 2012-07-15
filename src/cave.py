@@ -11,16 +11,19 @@ CAVE_DIRT = '.'
 CAVE_WALL = '#'
 CAVE_ROCK = '*'
 CAVE_LAMBDA = '\\'
+CAVE_LAMBDA_ROCK = '@'
 CAVE_ROBOT = 'R'
 CAVE_CLOSED_LIFT = 'L'
 CAVE_OPEN_LIFT = 'O'
 CAVE_BEARD = 'W'
 CAVE_RAZOR = '!'
 
+CAVE_ANY_ROCK = (CAVE_ROCK, CAVE_LAMBDA_ROCK)
+
 CAVE_TRAMPOLINE_CHARS = 'ABCDEFGHI'
 CAVE_TARGET_CHARS = '123456789'
 
-CAVE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE_ROBOT, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT, CAVE_BEARD, CAVE_RAZOR])
+CAVE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE_LAMBDA_ROCK, CAVE_ROBOT, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT, CAVE_BEARD, CAVE_RAZOR])
 CAVE_CHARS.update(CAVE_TRAMPOLINE_CHARS)
 CAVE_CHARS.update(CAVE_TARGET_CHARS)
 
@@ -102,8 +105,11 @@ class Cave(object):
         self._lift_pos = None
         self._lift_open = False
         self._lambda_count = 0
+        self.lambda_rock_count = 0
         self._lambda_collected = 0
         self.lambdas = set()
+        self.lambda_rocks = set()
+        self.razors = set()
         # Beard parameters.
         self.beard_growth_rate = DEFAULT_BEARD_GROWTH_RATE
         self.beard_growth = self.beard_growth_rate - 1
@@ -126,6 +132,7 @@ class Cave(object):
         s.append('Lift position:     %s' % str(self._lift_pos))
         s.append('Lift state:        %s' % ('Open' if self._lift_open else 'Closed'))
         s.append('Number of lambdas: %d' % self._lambda_count)
+        s.append('Lambda rocks:      %d' % self.lambda_rock_count)
         s.append('Water resistance:  %d' % self.water_resistance)
         s.append('Water level:       %d' % self.water_level)
         s.append('Flood rate:        %d' % self.flood_rate)
@@ -161,10 +168,28 @@ class Cave(object):
         self._robot_pos = (x, y)
         self.set(x, y, CAVE_ROBOT)
         
-    def set_rock(self, x, y):
+    def set_rock(self, new_pos, old_pos):
+        x, y = new_pos
         self.set(x, y, CAVE_ROCK)
         self.rock_movement = True
         if self.at(x, y - 1) == CAVE_ROBOT:
+            raise RobotDestroyed()
+            
+    def set_lambda_rock(self, new_pos, prev_pos):
+        nx, ny = new_pos
+        px, py = prev_pos
+        falling = ny < py
+        self.lambda_rocks.remove(prev_pos)
+        if falling:
+            self.lambdas.add(new_pos)
+            self.lambda_rock_count -= 1
+            self._lambda_count += 1
+            self.set(nx, ny, CAVE_LAMBDA)
+        else:
+            self.lambda_rocks.add(new_pos)
+            self.set(nx, ny, CAVE_LAMBDA_ROCK)
+        #self.rock_movement = True
+        if self.at(nx, ny - 1) == CAVE_ROBOT:
             raise RobotDestroyed()
         
     @property
@@ -179,7 +204,7 @@ class Cave(object):
         return self._trampoline.get(trampoline)
     
     def trampoline_target_pos(self, trampoline):
-        return None
+        return self._trampoline_target_pos[self._trampoline[trampoline]]
 
     def analyze(self):
         self._lambda_count = 0
@@ -188,6 +213,11 @@ class Cave(object):
                 if content == CAVE_LAMBDA:
                     self._lambda_count += 1
                     self.lambdas.add((x, y))
+                elif content == CAVE_LAMBDA_ROCK:
+                    self.lambda_rock_count += 1
+                    self.lambda_rocks.add((x, y))
+                elif content == CAVE_RAZOR:
+                    self.razors.add((x, y))
                 elif content == CAVE_ROBOT:
                     self._robot_pos = (x, y)
                 elif content == CAVE_CLOSED_LIFT:
@@ -238,7 +268,7 @@ class Cave(object):
         self.analyze()
 
     def is_cave_str(self, s):
-        return len(s) > 0 and frozenset(s) <= CAVE_CHARS
+        return len(s) > 0 and set(s) <= CAVE_CHARS
 
     def is_possible_robot_move(self, pos, move):
         rpx, rpy = pos
@@ -246,13 +276,13 @@ class Cave(object):
             return True
         # don't go down when a rock is above
         if move == MOVE_DOWN:
-            if self.at(rpx, rpy+1) == CAVE_ROCK:
+            if self.at(rpx, rpy+1) in CAVE_ANY_ROCK:
                 return False
         dx, dy = DPOS[move]
         obj = self.at(rpx+dx, rpy+dy)
         # rocks can be pushed
         if move in (MOVE_RIGHT, MOVE_LEFT):
-            if obj == CAVE_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
+            if obj in CAVE_ANY_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
                 return True
         # it's possible to go to any occupiable object
         if is_occupiable(obj):
@@ -288,92 +318,69 @@ class Cave(object):
     def clone(self):
         return copy.deepcopy(self)
 
-    def get_move_state(self):
-        """ Save the state before robot movement. """
-        robot_x, robot_y = self._robot_pos
-        saved_positions = [self._robot_pos]
-        saved_positions.extend(surrounding_squares(robot_x, robot_y))
-        saved_positions.extend([(robot_x - 2, robot_y), (robot_x + 2, robot_y)])
-        saved_positions.extend(self._trampoline_pos.itervalues())
-        saved_positions.extend(self._trampoline_target_pos.itervalues())
-        squares = dict([(pos, self.at(*pos)) for pos in saved_positions])
-        return (squares, self.score, self.end_state, self.rock_movement, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected, self.razors_carried)
-
-    def restore_move_state(self, state):
-        """ Restore the state as it was before robot movement. """
-        squares, score, end_state, rock_movement, robot_pos, lift_open, lambda_count, lambda_collected, razors_carried = state
-        self.score = score
-        self.end_state = end_state
-        self.rock_movement = rock_movement
-        self._robot_pos = robot_pos
-        self._lift_open = lift_open
-        self._lambda_count = lambda_count
-        self._lambda_collected = lambda_collected
-        self.razors_carried = razors_carried
-        for pos, content in squares.iteritems():
-            self.set(pos[0], pos[1], content)
-
     def move(self, move):
         if self.completed:
             return self
+        next = self.clone()
         if move == MOVE_ABORT:
-            next = self.clone()
             next.end_state = END_STATE_ABORT
             next.score += self._lambda_collected * SCORE_LAMBDA_ABORT
             return next
-        state = self.get_move_state()
-        self.score += SCORE_MOVE
+        next.score += SCORE_MOVE
         dx, dy = DPOS[move]
-        x, y = self._robot_pos
+        x, y = next._robot_pos
         new_x = x + dx
         new_y = y + dy
-        target_content = self.at(new_x, new_y)
+        target_content = next.at(new_x, new_y)
         if target_content == CAVE_OPEN_LIFT:
-            next = self.clone()
             next.set_robot(new_x, new_y)
             next.set(x, y, CAVE_EMPTY)
             next.end_state = END_STATE_WIN
             next.score += self._lambda_collected * SCORE_LAMBDA_LIFT
             return next
-        self.rock_movement = False
+        next.rock_movement = False
         if target_content in (CAVE_EMPTY, CAVE_DIRT):
-            self.set_robot(new_x, new_y)
-            self.set(x, y, CAVE_EMPTY)
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
         elif target_content == CAVE_LAMBDA:
-            self.set_robot(new_x, new_y)
-            self.set(x, y, CAVE_EMPTY)
-            self._lambda_collected += 1
-            self._lambda_count -= 1
-            self.lambdas.remove((new_x, new_y))
-            if self._lambda_count == 0:
-                self._lift_open = True
-            self.score += SCORE_LAMBDA_COLLECT
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
+            next._lambda_collected += 1
+            next._lambda_count -= 1
+            next.lambdas.remove((new_x, new_y))
+            if next._lambda_count + next.lambda_rock_count == 0:
+                next._lift_open = True
+            next.score += SCORE_LAMBDA_COLLECT
         elif target_content == CAVE_RAZOR:
-            self.set_robot(new_x, new_y)
-            self.set(x, y, CAVE_EMPTY)
-            self.razors_carried += 1
+            next.set_robot(new_x, new_y)
+            next.set(x, y, CAVE_EMPTY)
+            next.razors_carried += 1
+            next.razors.remove((new_x, new_y))
         elif target_content in CAVE_TRAMPOLINE_CHARS:
-            target = self._trampoline[target_content]
-            target_pos = self._trampoline_target_pos[target]
-            self.set_robot(*target_pos)
-            self.set(x, y, CAVE_EMPTY)
-            for trampoline, pos in self._trampoline_pos.iteritems():
-                if self._trampoline[trampoline] == target:
-                    self.set(pos[0], pos[1], CAVE_EMPTY)
+            target = next._trampoline[target_content]
+            target_pos = next._trampoline_target_pos[target]
+            next.set_robot(*target_pos)
+            next.set(x, y, CAVE_EMPTY)
+            for trampoline, pos in next._trampoline_pos.iteritems():
+                if next._trampoline[trampoline] == target:
+                    next.set(pos[0], pos[1], CAVE_EMPTY)
         elif target_content == CAVE_ROCK and dy == 0:
-            if self.at(x + 2 * dx, y) == CAVE_EMPTY:
-                self.set_robot(new_x, new_y)
-                self.set(x, y, CAVE_EMPTY)
-                self.set_rock(x + 2 * dx, y)
-        if move == MOVE_SHAVE and self.razors_carried > 0:
-            self.razors_carried -= 1
+            if next.at(x + 2 * dx, y) == CAVE_EMPTY:
+                next.set_robot(new_x, new_y)
+                next.set(x, y, CAVE_EMPTY)
+                next.set_rock((x + 2 * dx, y), (x + dx, y))
+        elif target_content == CAVE_LAMBDA_ROCK and dy == 0:
+            if next.at(x + 2 * dx, y) == CAVE_EMPTY:
+                next.set_robot(new_x, new_y)
+                next.set(x, y, CAVE_EMPTY)
+                next.set_lambda_rock((x + 2 * dx, y), (x + dx, y))
+        if move == MOVE_SHAVE and next.razors_carried > 0:
+            next.razors_carried -= 1
             for x, y in surrounding_squares(new_x, new_y):
-                if self.at(x, y) == CAVE_BEARD:
-                    self.set(x, y, CAVE_EMPTY)
-        assert self.at(*self._robot_pos) == CAVE_ROBOT
-        next = self.update()
-        self.restore_move_state(state)
-        return next
+                if next.at(x, y) == CAVE_BEARD:
+                    next.set(x, y, CAVE_EMPTY)
+        assert next.at(*next._robot_pos) == CAVE_ROBOT
+        return next.update()
 
     def update(self):
         next = self.clone()
@@ -388,25 +395,31 @@ class Cave(object):
             size_x, size_y = self.size
             for y in range(size_y):
                 for x in range(size_x):
-                    if self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_EMPTY:
-                        next.set(x, y, CAVE_EMPTY)
-                        next.set_rock(x, y - 1)
-                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                        next.set(x, y, CAVE_EMPTY)
-                        next.set_rock(x + 1, y - 1)
-                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_ROCK and self.at(x - 1, y) == CAVE_EMPTY and self.at(x - 1, y - 1) == CAVE_EMPTY:
-                        next.set(x, y, CAVE_EMPTY)
-                        next.set_rock(x - 1, y - 1)
-                    elif self.at(x, y) == CAVE_ROCK and self.at(x, y - 1) == CAVE_LAMBDA and self.at(x + 1, y) == CAVE_EMPTY and self.at(x + 1, y - 1) == CAVE_EMPTY:
-                        next.set(x, y, CAVE_EMPTY)
-                        next.set_rock(x + 1, y - 1)
-                    elif self.at(x, y) == CAVE_CLOSED_LIFT and self._lift_open:
+                    content = self.at(x, y)
+                    if content == CAVE_CLOSED_LIFT and self._lift_open:
                         next.set(x, y, CAVE_OPEN_LIFT)
-                    elif self.at(x, y) == CAVE_BEARD and beard_growth:
+                    elif content == CAVE_BEARD and beard_growth:
                         next.grow_beard(x, y)
+                    elif content in CAVE_ANY_ROCK:
+                        next.update_rock(self, x, y, content)                    
         except RobotDestroyed:
             next.end_state = END_STATE_LOSE
         return next
+    
+    def update_rock(self, previous_cave, x, y, rock_type):
+        set_func = self.set_rock if rock_type == CAVE_ROCK else self.set_lambda_rock
+        if previous_cave.at(x, y - 1) == CAVE_EMPTY:
+            self.set(x, y, CAVE_EMPTY)
+            set_func((x, y - 1), (x, y))
+        elif previous_cave.at(x, y - 1) in CAVE_ANY_ROCK and previous_cave.at(x + 1, y) == CAVE_EMPTY and previous_cave.at(x + 1, y - 1) == CAVE_EMPTY:
+            self.set(x, y, CAVE_EMPTY)
+            set_func((x + 1, y - 1), (x, y))
+        elif previous_cave.at(x, y - 1) in CAVE_ANY_ROCK and previous_cave.at(x - 1, y) == CAVE_EMPTY and previous_cave.at(x - 1, y - 1) == CAVE_EMPTY:
+            self.set(x, y, CAVE_EMPTY)
+            set_func((x - 1, y - 1), (x, y))
+        elif previous_cave.at(x, y - 1) == CAVE_LAMBDA and previous_cave.at(x + 1, y) == CAVE_EMPTY and previous_cave.at(x + 1, y - 1) == CAVE_EMPTY:
+            self.set(x, y, CAVE_EMPTY)
+            set_func((x + 1, y - 1), (x, y))
     
     def update_water(self):
         robot_x, robot_y = self._robot_pos
