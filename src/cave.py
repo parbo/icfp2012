@@ -2,6 +2,7 @@
 import sys
 import copy
 import re
+import astar
 
 CAVE_EMPTY = ' '
 CAVE_DIRT = '.'
@@ -20,6 +21,9 @@ CAVE_TARGET_CHARS = '123456789'
 CAVE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE_ROBOT, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT, CAVE_BEARD, CAVE_RAZOR])
 CAVE_CHARS.update(CAVE_TRAMPOLINE_CHARS)
 CAVE_CHARS.update(CAVE_TARGET_CHARS)
+
+CAVE_OCCUPIABLE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_OPEN_LIFT, CAVE_LAMBDA, CAVE_RAZOR])
+CAVE_SOLID_CHARS = CAVE_CHARS - CAVE_OCCUPIABLE_CHARS
 
 MOVE_LEFT = 'L'
 MOVE_RIGHT = 'R'
@@ -65,6 +69,9 @@ def is_trampoline(content):
 
 def is_target(content):
     return content in CAVE_TARGET_CHARS
+
+def is_occupiable(content):
+    return content in CAVE_OCCUPIABLE_CHARS
 
 def surrounding_squares(x, y):
     for ys in range(y - 1, y + 2):
@@ -221,13 +228,58 @@ class Cave(object):
         cave_width = max([len(line) for line in cave_lines])
         self._cave = [list(line.ljust(cave_width)) for line in reversed(cave_lines)]
         self.analyze()
-        
+
     def is_cave_str(self, s):
         return len(s) > 0 and frozenset(s) <= CAVE_CHARS
 
+    def is_possible_robot_move(self, pos, move):
+        rpx, rpy = pos
+        if move in (MOVE_WAIT, MOVE_ABORT):
+            return True
+        # don't go down when a rock is above
+        if move == MOVE_DOWN:
+            if self.at(rpx, rpy+1) == CAVE_ROCK:
+                return False
+        dx, dy = DPOS[move]
+        obj = self.at(rpx+dx, rpy+dy)
+        # rocks can be pushed
+        if move in (MOVE_RIGHT, MOVE_LEFT):
+            if obj == CAVE_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
+                return True
+        # it's possible to go to any occupiable object
+        if is_occupiable(obj):
+            return True
+
+    def get_possible_robot_moves(self):
+        return [m for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT] if self.is_possible_robot_move(self._robot_pos, m)]
+
+    def find_path(self, goal):
+        def gf(c):
+            def g(n1, n2):
+                return 1
+            return g
+        def nf(c):
+            def neighbours(n):
+                x, y = n
+                nb = []
+                w, h = c.size
+                for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT]:
+                    if c.is_possible_robot_move((x, y), m):
+                        dx, dy = DPOS[m]
+                        nb.append((x+dx, y+dy))
+                return nb
+            return neighbours
+        def hf(goal):
+            def h(n):
+                x, y = n
+                gx, gy = goal
+                return abs(x - gx) + abs(y - gy)
+            return h
+        return astar.astar(self._robot_pos, goal, gf(self), hf(goal), nf(self))
+
     def clone(self):
         return copy.deepcopy(self)
-        
+
     def get_move_state(self):
         """ Save the state before robot movement. """
         robot_x, robot_y = self._robot_pos

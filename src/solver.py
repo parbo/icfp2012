@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 #from __future__ import with_statement
-import astar
 import cave
 import logging
 import math
@@ -27,41 +26,10 @@ class AStarSolver(Solver):
         Solver.__init__(self)
         self.visited = {}
 
-    def find_path(self, start, goal, cave_):
-        def gf(c):
-            def g(n1, n2):
-                return 1
-            return g
-        def nf(c):
-            def neighbours(n):
-                x, y = n
-                nb = []
-                w, h = c.size
-                for dx, dy in [(-1, 0), (0, 1), (1, 0), (0, -1)]:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= ny < h and 0 <= nx < w:
-                        rock_above = (ny < y and c.at(x, y+1) == cave.CAVE_ROCK)
-                        if not rock_above:
-                            pushable_rock_left = (nx < x and c.at(nx, y) == cave.CAVE_ROCK and c.at(nx-1, y) == cave.CAVE_EMPTY)
-                            pushable_rock_right = (nx > x and c.at(nx, y) == cave.CAVE_ROCK and c.at(nx+1, y) == cave.CAVE_EMPTY)
-                            if c.at(nx, ny) in (cave.CAVE_EMPTY, cave.CAVE_DIRT, cave.CAVE_OPEN_LIFT, cave.CAVE_LAMBDA):
-                                nb.append((nx, ny))
-                            elif pushable_rock_right or pushable_rock_right:
-                                nb.append((nx, ny))
-                return nb
-            return neighbours
-        def hf(goal):
-            def h(n):
-                x, y = n
-                gx, gy = goal
-                return abs(x - gx) + abs(y - gy)
-            return h
-        return astar.astar(start, goal, gf(cave_), hf(goal), nf(cave_))
-
-    def find_paths(self, start, goals, cave_):
+    def find_paths(self, goals, cave_):
         paths = []
         for g in goals:
-            p = self.find_path(start, g, cave_)
+            p = cave_.find_path(g)
             if len(p) > 0:
                 paths.append(p)
         paths.sort(lambda x, y: len(x) - len(y))
@@ -116,12 +84,10 @@ class AStarSolver(Solver):
         return cave_, moves, cave_._robot_pos == p[-1], False
 
     def move(self, cave_, moves, move):
-        new_cave = cave_.move(move)
-        if move != cave.MOVE_WAIT:
-            success = new_cave._robot_pos != cave_._robot_pos
-        else:
-            success = True
-        return new_cave, moves + move, success, new_cave.rock_movement
+        if cave_.is_possible_robot_move(cave_._robot_pos, move):
+            new_cave = cave_.move(move)
+            return new_cave, moves + move, True, new_cave.rock_movement
+        return cave_, moves, False, False
 
     def solve_recursive(self, cave_, moves):
         try:
@@ -132,10 +98,10 @@ class AStarSolver(Solver):
             return cave_.score, cave_, moves
         goals = self.find_lambdas(cave_)
         goals = goals[:5]
-        paths = self.find_paths(cave_._robot_pos, goals, cave_)
+        paths = self.find_paths(goals, cave_)
         if len(paths) == 0:
             # find lift
-            paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
+            paths = self.find_paths([cave_._lift_pos], cave_)
         scores = []
         for p in paths:
             new_cave, new_moves, success, replan = self.follow_path(cave_, moves, p)
@@ -182,7 +148,7 @@ class AStarSolver(Solver):
                     return self.move(cave_, moves, cave.MOVE_ABORT)
                 logging.debug("considering %d goals", len(goals))
                 # find paths to goals
-                paths = self.find_paths(cave_._robot_pos, goals, cave_)
+                paths = self.find_paths(goals, cave_)
                 logging.debug("found %d paths", len(paths))
                 if len(paths) > 0:
                     # reset panic count when new paths are found
