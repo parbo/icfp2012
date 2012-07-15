@@ -68,20 +68,30 @@ class AStarSolver(Solver):
         return paths
 
     def find_lambdas(self, cave_):
+        def get_lambda_comparer(cave_):
+            rpx, rpy = cave_._robot_pos
+            lpx, lpy = cave_._lift_pos
+            def compare(p1, p2):
+                dp1 = abs(rpx - p1[0]) + abs(rpy - p1[1])
+                dp2 = abs(rpx - p2[0]) + abs(rpy - p2[1])
+                diff = dp1 - dp2
+                if diff == 0:
+                    # take lambdas close to the lift later
+                    return (abs(lpx - p2[0]) + abs(lpy - p2[1])) - (abs(lpx - p1[0]) + abs(lpy - p1[1]))
+                return diff
+            return compare
         w, h = cave_.size
         lambdas = []
-        for y in range(h):
-            for x in range(w):
-                if cave_.at(x, y) == cave.CAVE_LAMBDA:
-                    possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL,) and cave_.at(x + 1, y) in (cave.CAVE_WALL,))
-                    if possible:
-                        lambdas.append((x, y))
+        for x, y in cave_.lambdas:
+            if cave_.at(x, y) == cave.CAVE_LAMBDA:
+                possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL,) and cave_.at(x + 1, y) in (cave.CAVE_WALL,))
+                if possible:
+                    lambdas.append((x, y))
         rpx, rpy = cave_._robot_pos
-        lambdas.sort(lambda pos1, pos2: (abs(rpx - pos1[0]) + abs(rpy - pos1[1])) - (abs(rpx - pos2[0]) + abs(rpy - pos2[1])))
+        lambdas.sort(get_lambda_comparer(cave_))
         return lambdas
 
     def follow_path(self, cave_, moves, p):
-        success = True
         for x, y in p[1:]:
             rpx, rpy = cave_._robot_pos
             move = ""
@@ -98,16 +108,12 @@ class AStarSolver(Solver):
 
             if move:
                 cave_, moves, step_success, replan = self.move(cave_, moves, move)
-                if not step_success:
-                    success = False
                 if replan:
-                    return cave_, moves, success and cave_.end_state != cave.END_STATE_LOSE, replan
+                    return cave_, moves, cave_._robot_pos == p[-1], replan
 
             if cave_.completed:
-                if cave_.end_state == cave.END_STATE_LOSE:
-                    success = False
                 break
-        return cave_, moves, success, False
+        return cave_, moves, cave_._robot_pos == p[-1], False
 
     def move(self, cave_, moves, move):
         new_cave = cave_.move(move)
@@ -146,80 +152,81 @@ class AStarSolver(Solver):
         print new_cave.score
         return new_cave.score, new_cave, new_moves
 
+    def find_goals(self, cave_):
+        # find some lambdas
+        lambdas = self.find_lambdas(cave_)
+        lambdas = lambdas[:20]
+        if len(lambdas) > 0:
+            return lambdas
+        # no lambdas, find open lift
+        if cave_.at(*cave_._lift_pos) == cave.CAVE_OPEN_LIFT:
+            logging.debug("go to open lift")
+            return [cave_._lift_pos]
+        else:
+            logging.debug("lift not open")
+        # no goals
+        return []
+
     def solve(self, cave_):
         moves = ""
-        fake_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN]
+        panic_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN]
+        panic_count = 0
         try:
             while not cave_.completed:
+                logging.debug("lambdas left: %d", cave_._lambda_count)
                 if cave_.is_drowning:
                     return self.move(cave_, moves, cave.MOVE_ABORT)
-                # find all the lambdas
-                lambdas = self.find_lambdas(cave_)
-                logging.debug("lambdas left: %d", len(lambdas))
-                lambdas = lambdas[:20]
-                # just bail for now
-                if len(lambdas) == 0:
-                    # Take the shortest path
-                    paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
-                    if len(paths) == 0:
-                        logging.debug("no path to lift, abort")
-                        return self.move(cave_, moves, cave.MOVE_ABORT)
-                    logging.debug("no more lambdas, go to lift")
-                    logging.debug("path: %s", paths[0])
-                    new_cave, new_moves, success, replan = self.follow_path(cave_, moves, paths[0])
-                    if replan:
-                        cave_ = new_cave
-                        moves = new_moves
-                    else:
-                        return new_cave, new_moves, success, replan
+                # find goals
+                goals = self.find_goals(cave_)
+                if len(goals) == 0:
+                    return self.move(cave_, moves, cave.MOVE_ABORT)
+                logging.debug("considering %d goals", len(goals))
+                # find paths to goals
+                paths = self.find_paths(cave_._robot_pos, goals, cave_)
+                logging.debug("found %d paths", len(paths))
+                if len(paths) > 0:
+                    # reset panic count when new paths are found
+                    self.panic_count = 0
+                taken = None
+                to_replan = []
+                for p in paths:
+                    # move to it
+                    new_cave, new_moves, success, replan = self.follow_path(cave_, moves, p)
+                    if success and new_cave.end_state != cave.END_STATE_LOSE:
+                        logging.debug("successfully followed path")
+                        taken = new_cave, new_moves
+                        break
+                    if replan and new_cave.end_state != cave.END_STATE_LOSE:
+                        logging.debug("replan, cave state: %s", new_cave.end_state)
+                        to_replan.append((new_cave, new_moves))
+                if taken:
+                    # a successful move was found
+                    cave_ = taken[0]
+                    moves = taken[1]
+                elif to_replan:
+                    # something changed, replanning needed
+                    logging.debug("replanning needed!")
+                    # grab the first one
+                    cave_ = to_replan[0][0]
+                    moves = to_replan[0][1]
                 else:
-                    # Take the shortest path
-                    paths = self.find_paths(cave_._robot_pos, lambdas, cave_)
-                    if len(paths) == 0:
-                        logging.debug("no path to lambdas, go to lift")
-                        paths = self.find_paths(cave_._robot_pos, [cave_._lift_pos], cave_)
-                        if len(paths) == 0:
-                            logging.debug("no path to lift, abort")
-                            return self.move(cave_, moves, cave.MOVE_ABORT)
-                        return self.follow_path(cave_, moves, paths[0])
-                    taken = None
-                    to_replan = []
-                    for p in paths:
-                        # move to it
-                        new_cave, new_moves, success, replan = self.follow_path(cave_, moves, p)
+                    # no strategy works, just move a step and see what happens
+                    ok = False
+                    for m in panic_moves[panic_count:]:
+                        panic_count += 1
+                        rpx, rpy = cave_._robot_pos
+                        new_cave, new_moves, success, replan = self.move(cave_, moves, m)
                         if success:
-                            assert new_cave.end_state != cave.END_STATE_LOSE
-                            taken = new_cave, new_moves
+                            cave_ = new_cave
+                            moves = new_moves
+                            ok = True
                             break
-                        if replan and not new_cave.completed:
-                            logging.debug("replan, cave state: %s", new_cave.end_state)
-                            to_replan.append((new_cave, new_moves))
-                    if taken:
-                        cave_ = taken[0]
-                        moves = taken[1]
-                    elif to_replan:
-                        logging.debug("replanning needed!")
-                        # grab the first one
-                        cave_ = to_replan[0][0]
-                        moves = to_replan[0][1]
-                    else:
-                        while fake_moves:
-                            rpx, rpy = cave_._robot_pos
-                            fm = fake_moves.pop(0)
-                            new_cave, new_moves, success, replan = self.move(cave_, moves, fm)
-                            if success:
-                                cave_ = new_cave
-                                moves = new_moves
-                                fake_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN]
-                                break
-                        else:
-                            logging.debug("no succesful path to lambdas, abort")
-                            return self.move(cave_, moves, cave.MOVE_ABORT)
+                    if not ok:
+                        return self.move(cave_, moves, cave.MOVE_ABORT)
         except SolverInterrupted:
             logging.debug("solver interrupted, abort")
             return self.move(cave_, moves, cave.MOVE_ABORT)
         logging.debug("end state: %s", cave_.end_state)
-        logging.debug("how is this possible?")
         return cave_, moves, True, False
 
 
