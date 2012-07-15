@@ -445,19 +445,21 @@ class Cave(object):
         return next
     
     def update_rock(self, previous_cave, x, y, rock_type):
-        set_func = self.set_rock if rock_type == CAVE_ROCK else self.set_lambda_rock
+        new_pos = None
         if previous_cave.at(x, y - 1) == CAVE_EMPTY:
-            self.set(x, y, CAVE_EMPTY)
-            set_func((x, y - 1), (x, y))
+            new_pos = (x, y - 1)
         elif previous_cave.at(x, y - 1) in CAVE_ANY_ROCK and previous_cave.at(x + 1, y) == CAVE_EMPTY and previous_cave.at(x + 1, y - 1) == CAVE_EMPTY:
-            self.set(x, y, CAVE_EMPTY)
-            set_func((x + 1, y - 1), (x, y))
+            new_pos = (x + 1, y - 1)
         elif previous_cave.at(x, y - 1) in CAVE_ANY_ROCK and previous_cave.at(x - 1, y) == CAVE_EMPTY and previous_cave.at(x - 1, y - 1) == CAVE_EMPTY:
-            self.set(x, y, CAVE_EMPTY)
-            set_func((x - 1, y - 1), (x, y))
+            new_pos = (x - 1, y - 1)
         elif previous_cave.at(x, y - 1) == CAVE_LAMBDA and previous_cave.at(x + 1, y) == CAVE_EMPTY and previous_cave.at(x + 1, y - 1) == CAVE_EMPTY:
+            new_pos = (x + 1, y - 1)
+        if new_pos is not None:
             self.set(x, y, CAVE_EMPTY)
-            set_func((x + 1, y - 1), (x, y))
+            if rock_type == CAVE_ROCK:
+                self.set_rock(new_pos, (x, y))
+            else:
+                self.set_lambda_rock(new_pos, (x, y))
     
     def update_water(self):
         robot_x, robot_y = self._robot_pos
@@ -491,6 +493,54 @@ class Cave(object):
             cave = cave.move(MOVE_WAIT)
             moves += 1
         return (cave, moves)
+        
+    def find_unmovable_rocks(self):
+        """ Get a set of rocks (positions) that can't be moved. """
+        cave = {}
+        size_x, size_y = self.size
+        for y in range(size_y):
+            for x in range(size_x):
+                content = self.at(x, y)
+                if content == CAVE_ROCK:
+                    cave[x, y] = (x, y)
+                elif content in (CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT):
+                    cave[x, y] = content
+                else:
+                    cave[x, y] = CAVE_EMPTY
+        other_than_rock = (CAVE_EMPTY, CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT)
+        # Find rocks that can be pushed.
+        movable = set()
+        for y in range(size_y):
+            for x in range(size_x):
+                if cave[x, y] not in other_than_rock and cave[x - 1, y] == CAVE_EMPTY and cave[x + 1, y] == CAVE_EMPTY:
+                    movable.add((x, y))
+        movement = True
+        while movement:
+            movement = False
+            next = copy.copy(cave)
+            for y in range(size_y):
+                for x in range(size_x):
+                    content = cave[x, y]
+                    if content not in other_than_rock:
+                        new_pos = None
+                        if cave[x, y - 1] == CAVE_EMPTY:
+                            new_pos = (x, y - 1)
+                        elif cave[x, y - 1] not in other_than_rock and cave[x + 1, y] == CAVE_EMPTY and cave[x + 1, y - 1] == CAVE_EMPTY:
+                            new_pos = (x + 1, y - 1)
+                        elif cave[x, y - 1] not in other_than_rock and cave[x - 1, y] == CAVE_EMPTY and cave[x - 1, y - 1] == CAVE_EMPTY:
+                            new_pos = (x - 1, y - 1)
+                        if new_pos is not None:
+                            next[x, y] = CAVE_EMPTY
+                            next[new_pos] = content
+                            movement = True
+            cave = next
+        unmovable = set()
+        for y in range(size_y):
+            for x in range(size_x):
+                if cave[x, y] == (x, y):
+                    unmovable.add((x, y))
+        unmovable -= movable
+        return unmovable
 
 if __name__ == '__main__':
     cave = Cave()

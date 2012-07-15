@@ -39,6 +39,10 @@ class TestCave(unittest.TestCase):
         cave_map = open('../maps/horock1.map', 'r')
         self.horock_cave.load_file(cave_map)
         cave_map.close()
+        self.unmovable_rock_cave = cave.Cave()
+        cave_map = open('../maps/test_unmovable_rocks.map', 'r')
+        self.unmovable_rock_cave.load_file(cave_map)
+        cave_map.close()
         
     def test_load(self):
         self.assertEqual(str(self.cave), self.cave_str)
@@ -186,6 +190,13 @@ class TestCave(unittest.TestCase):
         move = [R, R, R, R, R, U, U, R, R, L]
         cv = apply_moves(self.horock_cave, move)
         self.assertEqual(cv.at(4, 3), cave.CAVE_LAMBDA)
+        
+    def test_unmovable_rocks(self):
+        unmovable = self.unmovable_rock_cave.find_unmovable_rocks()
+        self.assertEqual(len(unmovable), 3)
+        self.assertTrue((7, 1) in unmovable)
+        self.assertTrue((8, 1) in unmovable)
+        self.assertTrue((13, 6) in unmovable)
                 
 if __name__ == '__main__':
     #unittest.main()
