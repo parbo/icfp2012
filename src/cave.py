@@ -94,6 +94,7 @@ class Cave(object):
         self._lift_open = False
         self._lambda_count = 0
         self._lambda_collected = 0
+        self.lambdas = set()
         # Beard parameters.
         self.beard_growth_rate = DEFAULT_BEARD_GROWTH_RATE
         self.beard_growth = self.beard_growth_rate - 1
@@ -160,6 +161,9 @@ class Cave(object):
     def analyze(self):
         self._lambda_count = 0
         for row_ix, row in enumerate(self._cave):
+            for col_ix, col in enumerate(row):
+                if col == CAVE_LAMBDA:
+                    self.lambdas.add((col_ix, row_ix))
             self._lambda_count += row.count(CAVE_LAMBDA)
             try:
                 robot_col = row.index(CAVE_ROBOT)
@@ -277,6 +281,7 @@ class Cave(object):
             self.set(x, y, CAVE_EMPTY)
             self._lambda_collected += 1
             self._lambda_count -= 1
+            self.lambdas.remove((new_x, new_y))
             if self._lambda_count == 0:
                 self._lift_open = True
             self.score += SCORE_LAMBDA_COLLECT
