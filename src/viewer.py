@@ -201,6 +201,7 @@ class Canvas(wx.ScrolledWindow):
         self._bmp_razor = wx.Bitmap(os.path.join("images", "razor.jpg"));
         self._bmp_trampoline = wx.Bitmap(os.path.join("images", "trampoline.jpg"));
         self._bmp_target = wx.Bitmap(os.path.join("images", "target.jpg"));
+        self._bmp_horock = wx.Bitmap(os.path.join("images", "horock.jpg"));
         # Ensure scrollbars are used
         self.SetMapSize(10, 10)
 
@@ -228,6 +229,7 @@ class Canvas(wx.ScrolledWindow):
                             cave.CAVE_RAZOR: self._bmp_razor,
                             cave.CAVE_ROBOT: self._bmp_robot,
                             cave.CAVE_ROCK: self._bmp_rock,
+                            cave.CAVE_LAMBDA_ROCK: self._bmp_horock,
                             cave.CAVE_LAMBDA: self._bmp_lambda,
                             cave.CAVE_CLOSED_LIFT: self._bmp_closed_lift,
                             cave.CAVE_OPEN_LIFT: self._bmp_open_lift,

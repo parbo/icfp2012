@@ -184,7 +184,7 @@ class Cave(object):
         px, py = prev_pos
         falling = ny < py
         self.lambda_rocks.remove(prev_pos)
-        if falling:
+        if falling and self.at(nx, ny - 1) != CAVE_EMPTY:
             self.lambdas.add(new_pos)
             self.lambda_rock_count -= 1
             self._lambda_count += 1
