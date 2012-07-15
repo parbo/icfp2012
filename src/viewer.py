@@ -146,6 +146,8 @@ class Viewer(wx.Frame):
             self.MakeMove(cave.MOVE_WAIT)
         elif kc == ord('a'):
             self.MakeMove(cave.MOVE_ABORT)
+        elif kc == ord('r'):
+            self.MakeMove(cave.MOVE_SHAVE)
         else:
             event.Skip()
 
@@ -182,6 +184,7 @@ class Viewer(wx.Frame):
         bar.SetStatusText("WL: %s"%(self.cave.water_level,), 2)
         bar.SetStatusText("WR: %s/%s"%(self.cave.water_steps, self.cave.water_resistance,), 3)
         bar.SetStatusText("FR: %s"%(self.cave.flood_rate,), 4)
+        bar.SetStatusText("R: %s"%(self.cave.razors_carried,), 5)
 
 class Canvas(wx.ScrolledWindow):
     def __init__(self, parent):
@@ -245,7 +248,7 @@ class Canvas(wx.ScrolledWindow):
                     gc.DrawBitmap(bmp, p.x, p.y, 16, 16)
                     if cave.is_trampoline(obj) or cave.is_target(obj):
                         gc.DrawText(obj, p.x, p.y, gc.CreateBrush(wx.Brush(wx.Colour(0,0,255,255))))
-            if parent.cave.water_level > 0:
+            if parent.cave.water_level >= 0:
                 gc.SetBrush(wx.Brush(wx.Colour(0,0,255,50)))
                 p1 = self.CalcScrolledPosition((0, self._yp))
                 p2 = self.CalcScrolledPosition((self._xp, self._yp - 16 * (parent.cave.water_level + 1)))

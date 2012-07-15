@@ -28,6 +28,7 @@ CAVE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA, CAVE
 CAVE_CHARS.update(CAVE_TRAMPOLINE_CHARS)
 CAVE_CHARS.update(CAVE_TARGET_CHARS)
 
+CAVE_REMOVABLE_CHARS = set([CAVE_DIRT, CAVE_LAMBDA, CAVE_RAZOR])
 CAVE_OCCUPIABLE_CHARS = set([CAVE_EMPTY, CAVE_DIRT, CAVE_OPEN_LIFT, CAVE_LAMBDA, CAVE_RAZOR])
 CAVE_SOLID_CHARS = CAVE_CHARS - CAVE_OCCUPIABLE_CHARS
 
@@ -47,6 +48,14 @@ DPOS = {
     MOVE_SHAVE: (0, 0),
     MOVE_WAIT: (0, 0),
     MOVE_ABORT: (0, 0)
+}
+
+RDPOS = {
+    (-1, 0): MOVE_LEFT,
+    (1, 0): MOVE_RIGHT,
+    (0, 1): MOVE_UP,
+    (0, -1): MOVE_DOWN,
+    (0, 0): MOVE_WAIT,
 }
 
 SCORE_MOVE = -1
@@ -283,30 +292,44 @@ class Cave(object):
     def is_cave_str(self, s):
         return len(s) > 0 and set(s) <= CAVE_CHARS
 
-    def is_possible_robot_move(self, pos, move):
+    def robot_move_cost(self, move, pos=None):
+        """This returns the cost of the move, or -1 if impossible"""
+        if pos is None:
+            pos = self._robot_pos
         rpx, rpy = pos
         if move in (MOVE_WAIT, MOVE_ABORT):
-            return True
+            return 0
         # don't go down when a rock is above
         if move == MOVE_DOWN:
             if self.at(rpx, rpy+1) in CAVE_ANY_ROCK:
-                return False
+                return -1
         dx, dy = DPOS[move]
         obj = self.at(rpx+dx, rpy+dy)
-        # rocks can be pushed
+        # rocks can be pushed, but not to block the lift
         if move in (MOVE_RIGHT, MOVE_LEFT):
             if obj in CAVE_ANY_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
-                return True
+                if self.at(rpx+3*dx, rpy) in (CAVE_OPEN_LIFT, CAVE_CLOSED_LIFT):
+                    return 1000 # really high, but not impossible
+                return 3
         # it's possible to go to any occupiable object
         if is_occupiable(obj):
-            return True
+            return 1
 
-    def get_possible_robot_moves(self):
-        return [m for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT] if self.is_possible_robot_move(self._robot_pos, m)]
+    def get_possible_robot_moves(self, pos=None):
+        if pos is None:
+            pos = self._robot_pos
+        return [m for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT] if self.robot_move_cost(m, pos) >= 0]
 
-    def find_path(self, goal):
+    def find_path(self, goal, pos=None):
         def gf(c):
             def g(n1, n2):
+                dx = n2[0] - n1[0]
+                dy = n2[1] - n1[1]
+                try:
+                    m = RDPOS[(dx, dy)]
+                    return c.robot_move_cost(m, n1)
+                except KeyError:
+                    pass
                 return 1
             return g
         def nf(c):
@@ -315,7 +338,7 @@ class Cave(object):
                 nb = []
                 w, h = c.size
                 for m in [MOVE_UP, MOVE_DOWN, MOVE_RIGHT, MOVE_LEFT]:
-                    if c.is_possible_robot_move((x, y), m):
+                    if c.robot_move_cost(m, (x, y)) >= 0:
                         dx, dy = DPOS[m]
                         nb.append((x+dx, y+dy))
                 return nb
@@ -326,7 +349,9 @@ class Cave(object):
                 gx, gy = goal
                 return abs(x - gx) + abs(y - gy)
             return h
-        return astar.astar(self._robot_pos, goal, gf(self), hf(goal), nf(self))
+        if pos is None:
+            pos = self._robot_pos
+        return astar.astar(pos, goal, gf(self), hf(goal), nf(self))
 
     def clone(self):
         return copy.deepcopy(self)

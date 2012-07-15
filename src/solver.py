@@ -35,10 +35,10 @@ class AStarSolver(Solver):
         paths.sort(lambda x, y: len(x) - len(y))
         return paths
 
-    def find_lambdas(self, cave_):
-        def get_lambda_comparer(cave_):
-            rpx, rpy = cave_._robot_pos
-            lpx, lpy = cave_._lift_pos
+    def find_lambdas(self, cave_, pos=None):
+        def get_lambda_comparer(cave_, rpos, lpos):
+            rpx, rpy = rpos
+            lpx, lpy = lpos
             def compare(p1, p2):
                 dp1 = abs(rpx - p1[0]) + abs(rpy - p1[1])
                 dp2 = abs(rpx - p2[0]) + abs(rpy - p2[1])
@@ -55,8 +55,10 @@ class AStarSolver(Solver):
                 possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL,) and cave_.at(x + 1, y) in (cave.CAVE_WALL,))
                 if possible:
                     lambdas.append((x, y))
-        rpx, rpy = cave_._robot_pos
-        lambdas.sort(get_lambda_comparer(cave_))
+        if pos is None:
+            pos = cave_._robot_pos
+        rpx, rpy = pos
+        lambdas.sort(get_lambda_comparer(cave_, pos, cave_._lift_pos))
         return lambdas
 
     def follow_path(self, cave_, moves, p):
@@ -84,7 +86,7 @@ class AStarSolver(Solver):
         return cave_, moves, cave_._robot_pos == p[-1], False
 
     def move(self, cave_, moves, move):
-        if cave_.is_possible_robot_move(cave_._robot_pos, move):
+        if cave_.robot_move_cost(move) >= 0:
             new_cave = cave_.move(move)
             return new_cave, moves + move, True, new_cave.rock_movement
         return cave_, moves, False, False
@@ -118,12 +120,77 @@ class AStarSolver(Solver):
         print new_cave.score
         return new_cave.score, new_cave, new_moves
 
+    def exit_blocked(self, cave_, pos):
+        return len(cave_.get_possible_robot_moves(pos)) == 0
+
+    def find_stuff(self, cave_, stuff):
+        w, h = cave_.size
+        stuffs = []
+        for y in range(h):
+            for x in range(w):
+                if cave_.at(x, y) in stuff:
+                    stuffs.append((x, y))
+        return stuffs
+
     def find_goals(self, cave_):
         # find some lambdas
         lambdas = self.find_lambdas(cave_)
         lambdas = lambdas[:20]
-        if len(lambdas) > 0:
-            return lambdas
+
+        to_unblock = {}
+
+        blockcounts = {}
+        for x, y in lambdas:
+            c = cave_.clone()
+            c.set(x, y, cave.CAVE_EMPTY)
+            c, iters = c.next_stable()
+            blocked = 0
+            for ox, oy in lambdas:
+                if ox == x and oy == y:
+                    continue
+                if self.exit_blocked(c, (ox, oy)):
+                    if c.at(ox-1, oy) == cave.CAVE_ROCK and c.at(ox-2, oy) in cave.CAVE_REMOVABLE_CHARS:
+                        to_unblock[(x,y)] = (ox-2, oy)
+                    elif c.at(ox+1, oy) == cave.CAVE_ROCK and c.at(ox+2, oy) in cave.CAVE_REMOVABLE_CHARS:
+                        to_unblock[(x,y)] = (ox+2, oy)
+                    else:
+                        blocked += 1
+            blockcounts[(x,y)] = blocked
+
+        # sort on y pos
+        lambdas.sort(key=lambda x: x[1])
+
+        goals = []
+        for lmb in lambdas:
+            try:
+                unblocker = to_unblock[lmb]
+                if unblocker not in goals:
+                    goals.append(unblocker)
+            except KeyError:
+                pass
+            goals.append(lmb)
+
+#        print goals, to_unblock
+
+        logging.debug("blockcounts: %s", blockcounts)
+
+        goals.sort(key=lambda x: blockcounts.setdefault(x, int))
+
+        if len(goals) > 0:
+            return goals
+
+        trampolines = self.find_stuff(cave_, cave.CAVE_TRAMPOLINE_CHARS)
+        targets = self.find_stuff(cave_, cave.CAVE_TARGET_CHARS)
+        for t in target:
+            lambdas = find_lambdas(cave_, t)
+            for l in lambdas:
+                path = cave_.find_path(l, t)
+                if len(path) > 0:
+                    for tr in trampolines:
+                        path = cave_.find_path(tr)
+                        if len(path) > 0:
+                            return [tr]
+
         # no lambdas, find open lift
         if cave_.at(*cave_._lift_pos) == cave.CAVE_OPEN_LIFT:
             logging.debug("go to open lift")
@@ -159,7 +226,7 @@ class AStarSolver(Solver):
                     # move to it
                     new_cave, new_moves, success, replan = self.follow_path(cave_, moves, p)
                     if success and new_cave.end_state != cave.END_STATE_LOSE:
-                        logging.debug("successfully followed path")
+                        logging.debug("successfully followed path %s", p)
                         taken = new_cave, new_moves
                         break
                     if replan and new_cave.end_state != cave.END_STATE_LOSE:
