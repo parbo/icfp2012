@@ -311,7 +311,10 @@ class Cave(object):
         # don't go down when a rock is above
         # unless to a lift or trampoline
         if move == MOVE_DOWN:
-            if self.at(rpx, rpy+1) in CAVE_ANY_ROCK or (self.at(rpx+1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx+1, rpy) in CAVE_ANY_ROCK) or (self.at(rpx-1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx-1, rpy) in CAVE_ANY_ROCK):
+            rock_can_fall_from_left_above = self.at(rpx-1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx-1, rpy) in CAVE_ANY_ROCK and self.at(rpx, rpy+1) == CAVE_EMPTY
+            rock_can_fall_from_right_above = self.at(rpx+1, rpy+1) in CAVE_ANY_ROCK and self.at(rpx+1, rpy) in CAVE_ANY_ROCK and self.at(rpx, rpy+1) == CAVE_EMPTY
+            rock_can_fall_from_straight_above = self.at(rpx, rpy+1) in CAVE_ANY_ROCK
+            if rock_can_fall_from_straight_above or rock_can_fall_from_right_above or rock_can_fall_from_left_above:
                 if obj == CAVE_OPEN_LIFT or obj in CAVE_TRAMPOLINE_CHARS:
                     return 1
                 return -1

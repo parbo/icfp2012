@@ -136,7 +136,16 @@ class AStarSolver(Solver):
                 path_lengths[lmb] = len(p)
             else:
                 path_lengths[lmb] = 10000000
-        lambdas.sort(key=lambda x: path_lengths[x])
+        def lcmp(p1, p2):
+            pl1 = path_lengths[p1]
+            pl2 = path_lengths[p2]
+            diff = pl1 - pl2
+            # if same path length, take the one closest in y
+            if diff == 0:
+                rpx, rpy = cave_._robot_pos
+                diff = abs(rpy - p1[1]) - abs(rpy - p2[1])
+            return diff
+        lambdas.sort(lcmp)
 
         # find stuff we have to clear to make an exit from those lambdas
         # throw away the ones we can't exit from
