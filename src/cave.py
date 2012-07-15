@@ -2,6 +2,8 @@
 import sys
 import copy
 import re
+import array
+
 import astar
 
 CAVE_EMPTY = ' '
@@ -107,8 +109,12 @@ class Cave(object):
         self.beard_growth = self.beard_growth_rate - 1
         # Number of razors carried by the robot.
         self.razors_carried = 0
+        # Trampoline/target mapping.
+        self._trampoline = {}
+        # Trampoline/target postions.
+        self._trampoline_pos = {}
+        self._trampoline_target_pos = {}
 
-        # Private attributes
         self._cave = None
 
     def __str__(self):
@@ -125,6 +131,10 @@ class Cave(object):
         s.append('Flood rate:        %d' % self.flood_rate)
         s.append('Beard growth rate: %d' % self.beard_growth_rate)
         s.append('Initial razors:    %d' % self.razors_carried)
+        if len(self._trampoline) > 0:
+            s.append('Trampolines:       %s' % ', '.join(['%s->%s' % (tr, tg) for tr, tg in sorted(self._trampoline.iteritems())]))
+            s.append('Positions:         %s' % ', '.join(['%s->(%d,%d)' % (tr, p[0], p[1]) for tr, p in sorted(self._trampoline_pos.iteritems())]))
+            s.append('Targets:           %s' % ', '.join(['%s->(%d,%d)' % (tg, p[0], p[1]) for tg, p in sorted(self._trampoline_target_pos.iteritems())]))
         return '\n'.join(s)
 
     @property
@@ -164,34 +174,32 @@ class Cave(object):
     @property
     def is_drowning(self):
         return self.water_steps >= self.water_resistance
+    
+    def trampoline_target(self, trampoline):
+        return self._trampoline.get(trampoline)
+    
+    def trampoline_target_pos(self, trampoline):
+        return None
 
     def analyze(self):
         self._lambda_count = 0
-        for row_ix, row in enumerate(self._cave):
-            for col_ix, col in enumerate(row):
-                if col == CAVE_LAMBDA:
-                    self.lambdas.add((col_ix, row_ix))
-            self._lambda_count += row.count(CAVE_LAMBDA)
-            try:
-                robot_col = row.index(CAVE_ROBOT)
-            except ValueError:
-                pass
-            else:
-                self._robot_pos = (robot_col, row_ix)
-            try:
-                lift_col = row.index(CAVE_CLOSED_LIFT)
-            except ValueError:
-                pass
-            else:
-                self._lift_pos = (lift_col, row_ix)
-                self._lift_open = False
-            try:
-                lift_col = row.index(CAVE_OPEN_LIFT)
-            except ValueError:
-                pass
-            else:
-                self._lift_pos = (lift_col, row_ix)
-                self._lift_open = True
+        for y, row in enumerate(self._cave):
+            for x, content in enumerate(row):
+                if content == CAVE_LAMBDA:
+                    self._lambda_count += 1
+                    self.lambdas.add((x, y))
+                elif content == CAVE_ROBOT:
+                    self._robot_pos = (x, y)
+                elif content == CAVE_CLOSED_LIFT:
+                    self._lift_pos = (x, y)
+                    self._lift_open = False
+                elif content == CAVE_OPEN_LIFT:
+                    self._lift_pos = (x, y)
+                    self._lift_open = True
+                elif content in CAVE_TARGET_CHARS:
+                    self._trampoline_target_pos[content] = (x, y)
+                elif content in CAVE_TRAMPOLINE_CHARS:
+                    self._trampoline_pos[content] = (x, y)
 
     def load_file(self, f):
         cave_lines = []
@@ -214,7 +222,7 @@ class Cave(object):
                     continue
                 m = RE_TRAMPOLINE.match(line)
                 if m:
-                    #self.flood_rate = int(m.group(1))
+                    self._trampoline[m.group(1)] = m.group(2)
                     continue
                 m = RE_BEARD_GROWTH.match(line)
                 if m:
@@ -226,7 +234,7 @@ class Cave(object):
                     self.razors_carried = int(m.group(1))
                     continue
         cave_width = max([len(line) for line in cave_lines])
-        self._cave = [list(line.ljust(cave_width)) for line in reversed(cave_lines)]
+        self._cave = [array.array('c', line.ljust(cave_width)) for line in reversed(cave_lines)]
         self.analyze()
 
     def is_cave_str(self, s):
@@ -283,8 +291,11 @@ class Cave(object):
     def get_move_state(self):
         """ Save the state before robot movement. """
         robot_x, robot_y = self._robot_pos
-        saved_positions = [(x, robot_y) for x in range(robot_x - 2, robot_x + 3)]
-        saved_positions.extend([(robot_x, robot_y - 1), (robot_x, robot_y + 1)])
+        saved_positions = [self._robot_pos]
+        saved_positions.extend(surrounding_squares(robot_x, robot_y))
+        saved_positions.extend([(robot_x - 2, robot_y), (robot_x + 2, robot_y)])
+        saved_positions.extend(self._trampoline_pos.itervalues())
+        saved_positions.extend(self._trampoline_target_pos.itervalues())
         squares = dict([(pos, self.at(*pos)) for pos in saved_positions])
         return (squares, self.score, self.end_state, self.rock_movement, self._robot_pos, self._lift_open, self._lambda_count, self._lambda_collected, self.razors_carried)
 
@@ -341,6 +352,14 @@ class Cave(object):
             self.set_robot(new_x, new_y)
             self.set(x, y, CAVE_EMPTY)
             self.razors_carried += 1
+        elif target_content in CAVE_TRAMPOLINE_CHARS:
+            target = self._trampoline[target_content]
+            target_pos = self._trampoline_target_pos[target]
+            self.set_robot(*target_pos)
+            self.set(x, y, CAVE_EMPTY)
+            for trampoline, pos in self._trampoline_pos.iteritems():
+                if self._trampoline[trampoline] == target:
+                    self.set(pos[0], pos[1], CAVE_EMPTY)
         elif target_content == CAVE_ROCK and dy == 0:
             if self.at(x + 2 * dx, y) == CAVE_EMPTY:
                 self.set_robot(new_x, new_y)
