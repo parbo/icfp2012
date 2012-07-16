@@ -93,6 +93,9 @@ def surrounding_squares(x, y):
         for xs in range(x - 1, x + 2):
             if xs != x or ys != y:
                 yield (xs, ys)
+                
+def neighbour_squares(x, y):
+    return [(x, y + 1), (x + 1, y), (x, y - 1), (x - 1, y)]
 
 class RobotDestroyed(Exception):
     pass
@@ -133,6 +136,7 @@ class Cave(object):
         self._trampoline_pos = {}
         self._trampoline_target_pos = {}
 
+        self._additional_cost = {}
         self._cave = None
 
     def __str__(self):
@@ -295,14 +299,13 @@ class Cave(object):
         cave_width = max([len(line) for line in cave_lines])
         self._cave = [array.array('c', line.ljust(cave_width)) for line in reversed(cave_lines)]
         self.analyze()
+        self.refresh_additional_cost()
 
     def is_cave_str(self, s):
         return len(s) > 0 and set(s) <= CAVE_CHARS
 
-    def robot_move_cost(self, move, target='', pos=None):
+    def _robot_move_cost(self, move, target, pos):
         """This returns the cost of the move, or -1 if impossible"""
-        if pos is None:
-            pos = self._robot_pos
         rpx, rpy = pos
         if move in (MOVE_WAIT, MOVE_ABORT):
             return 0
@@ -333,6 +336,27 @@ class Cave(object):
         if obj == target:
             return 1
         return -1
+    
+    def robot_move_cost(self, move, target='', pos=None):
+        if pos is None:
+            pos = self._robot_pos
+        rpx, rpy = pos
+        dx, dy = DPOS[move]
+        cost = self._robot_move_cost(move, target, pos)
+        if cost > -1:
+            cost += self.additional_cost(rpx+dx, rpy+dy)
+        return cost
+    
+    def additional_cost(self, x, y):
+        return self._additional_cost.get((x, y), 0)
+    
+    def refresh_additional_cost(self):
+        x, y = self._lift_pos
+        y += 1
+        while self.at(x, y) in (CAVE_EMPTY, CAVE_LAMBDA, CAVE_RAZOR, CAVE_ROBOT):
+            y += 1
+        if self.at(x, y) in (CAVE_DIRT, CAVE_RAZOR):
+            self._additional_cost[x, y] = 25
 
     def get_possible_robot_moves(self, pos=None):
         if pos is None:
