@@ -352,7 +352,11 @@ class Cave(object):
         return cost
     
     def additional_cost(self, x, y):
-        return self._additional_cost.get((x, y), 0)
+        cost = 0
+        if y <= self.water_level:
+            used_wr = float(self.water_resistance - self.water_steps) / float(self.water_resistance)
+            cost += int(5 * used_wr)
+        return cost + self._additional_cost.get((x, y), 0)
     
     def refresh_additional_cost(self):
         x, y = self._lift_pos
