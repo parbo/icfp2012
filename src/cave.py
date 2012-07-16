@@ -557,46 +557,57 @@ class Cave(object):
             moves += 1
         return (cave, moves)
         
-    def find_unmovable_rocks(self):
-        """ Get a set of rocks (positions) that can't be moved. """
-        cave = {}
+    def _init_rock_simulation(self):
+        sim_cave = {}
         size_x, size_y = self.size
         for y in range(size_y):
             for x in range(size_x):
                 content = self.at(x, y)
                 if content == CAVE_ROCK:
-                    cave[x, y] = (x, y)
+                    sim_cave[x, y] = (x, y)
                 elif content in (CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT):
-                    cave[x, y] = content
+                    sim_cave[x, y] = content
                 else:
-                    cave[x, y] = CAVE_EMPTY
+                    sim_cave[x, y] = CAVE_EMPTY
+        return sim_cave
+    
+    def _run_rock_simulation(self, sim_cave):
         other_than_rock = (CAVE_EMPTY, CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT)
+        size_x, size_y = self.size
+        movement = True
+        while movement:
+            movement = False
+            next = copy.copy(sim_cave)
+            for y in range(size_y):
+                for x in range(size_x):
+                    content = sim_cave[x, y]
+                    if content not in other_than_rock:
+                        new_pos = None
+                        if sim_cave[x, y - 1] == CAVE_EMPTY:
+                            new_pos = (x, y - 1)
+                        elif sim_cave[x, y - 1] not in other_than_rock and sim_cave[x + 1, y] == CAVE_EMPTY and sim_cave[x + 1, y - 1] == CAVE_EMPTY:
+                            new_pos = (x + 1, y - 1)
+                        elif sim_cave[x, y - 1] not in other_than_rock and sim_cave[x - 1, y] == CAVE_EMPTY and sim_cave[x - 1, y - 1] == CAVE_EMPTY:
+                            new_pos = (x - 1, y - 1)
+                        if new_pos is not None:
+                            next[x, y] = CAVE_EMPTY
+                            next[new_pos] = content
+                            movement = True
+            sim_cave = next
+        return sim_cave
+        
+    def find_unmovable_rocks(self):
+        """ Get a set of rocks (positions) that can't be moved. """
+        other_than_rock = (CAVE_EMPTY, CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT)
+        cave = self._init_rock_simulation()
+        size_x, size_y = self.size
         # Find rocks that can be pushed.
         movable = set()
         for y in range(size_y):
             for x in range(size_x):
                 if cave[x, y] not in other_than_rock and cave[x - 1, y] == CAVE_EMPTY and cave[x + 1, y] == CAVE_EMPTY:
                     movable.add((x, y))
-        movement = True
-        while movement:
-            movement = False
-            next = copy.copy(cave)
-            for y in range(size_y):
-                for x in range(size_x):
-                    content = cave[x, y]
-                    if content not in other_than_rock:
-                        new_pos = None
-                        if cave[x, y - 1] == CAVE_EMPTY:
-                            new_pos = (x, y - 1)
-                        elif cave[x, y - 1] not in other_than_rock and cave[x + 1, y] == CAVE_EMPTY and cave[x + 1, y - 1] == CAVE_EMPTY:
-                            new_pos = (x + 1, y - 1)
-                        elif cave[x, y - 1] not in other_than_rock and cave[x - 1, y] == CAVE_EMPTY and cave[x - 1, y - 1] == CAVE_EMPTY:
-                            new_pos = (x - 1, y - 1)
-                        if new_pos is not None:
-                            next[x, y] = CAVE_EMPTY
-                            next[new_pos] = content
-                            movement = True
-            cave = next
+        cave = self._run_rock_simulation(cave)
         unmovable = set()
         for y in range(size_y):
             for x in range(size_x):
@@ -604,6 +615,18 @@ class Cave(object):
                     unmovable.add((x, y))
         unmovable -= movable
         return unmovable
+    
+    def find_bad_rocks(self):
+        other_than_rock = (CAVE_EMPTY, CAVE_WALL, CAVE_CLOSED_LIFT, CAVE_OPEN_LIFT)
+        cave = self._init_rock_simulation()
+        cave = self._run_rock_simulation(cave)
+        bad = set()
+        lx, ly = self._lift_pos
+        for x, y in [(lx - 1, ly), (lx, ly + 1), (lx + 1, ly)]:
+            content = cave[x, y]
+            if content not in other_than_rock:
+                bad.add(content)
+        return bad
 
 if __name__ == '__main__':
     cave = Cave()
@@ -611,3 +634,5 @@ if __name__ == '__main__':
     print cave
     print
     print cave.state_str()
+    print
+    print 'Bad rocks:', list(cave.find_bad_rocks())
