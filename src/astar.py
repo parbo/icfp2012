@@ -35,7 +35,7 @@ def astar(start, goal, g_fcn, h_fcn, find_neighbours_fcn):
     while open_list:
         f, node = open_list.pop()
         if node == goal:
-            return reconstruct_path(came_from, goal)
+            return f, reconstruct_path(came_from, goal)
         closed_list.add(node)
         neighbours = find_neighbours_fcn(node)
         for neighbour in neighbours:
@@ -57,7 +57,7 @@ def astar(start, goal, g_fcn, h_fcn, find_neighbours_fcn):
                 came_from[neighbour] = node
                 g_score[neighbour] = new_g
 
-    return tuple()
+    return 0, tuple()
 
 
 if __name__=="__main__":
@@ -90,7 +90,7 @@ if __name__=="__main__":
                         return x, y
         start = find(world, "s")
         goal = find(world, "g")
-        p = astar(start, goal, g, hf(goal), nf(world))
+        f, p = astar(start, goal, g, hf(goal), nf(world))
         for x, y in p[1:-1]:
             world[y][x] = "+"
         print "\n".join(["".join(row) for row in world])

@@ -143,16 +143,17 @@ class AStarSolver(Solver):
         lambdas = self.find_lambdas(cave_)
         lambdas = lambdas[:20]
 
-        path_lengths = {}
+        # sort on path cost (lower is better)
+        path_cost = {}
         for lmb in lambdas:
-            p = cave_.find_path(lmb)
+            f, p = cave_.find_path(lmb)
             if p:
-                path_lengths[lmb] = len(p)
+                path_cost[lmb] = int(f)
             else:
-                path_lengths[lmb] = 10000000
+                path_cost[lmb] = 10000000
         def lcmp(p1, p2):
-            pl1 = path_lengths[p1]
-            pl2 = path_lengths[p2]
+            pl1 = path_cost[p1]
+            pl2 = path_cost[p2]
             diff = pl1 - pl2
             # if same path length, take the one closest in y
             if diff == 0:
@@ -193,7 +194,7 @@ class AStarSolver(Solver):
             curr = cave_._robot_pos
             tentative = []
             for pos in positions:
-                p = cave_.find_path(pos, curr)
+                f, p = cave_.find_path(pos, curr)
                 if p:
                     tentative.append(Target(pos, cave_.at(*pos), p))
                     curr = pos
@@ -241,7 +242,7 @@ class AStarSolver(Solver):
             curr = cave_._robot_pos
             tentative = []
             for pos in positions:
-                p = cave_.find_path(pos, curr)
+                f, p = cave_.find_path(pos, curr)
                 if p:
                     tentative.append(Target(pos, cave_.at(*pos), p))
                     curr = pos
@@ -265,7 +266,7 @@ class AStarSolver(Solver):
         for t in targets:
             lambdas = self.find_lambdas(cave_, t)
             for l in lambdas:
-                path = cave_.find_path(l, t)
+                f, path = cave_.find_path(l, t)
                 if path:
                     logging.debug("found path from target to lambda")
                     trampolines = cave_.target_trampolines(cave_.at(*t))
@@ -274,7 +275,7 @@ class AStarSolver(Solver):
                         if tr in self._failed_targets:
                             logging.debug("trampoline %s has failed before, skipping", tr)
                             continue
-                        path = cave_.find_path(tr)
+                        f, path = cave_.find_path(tr)
                         if path:
                             logging.debug("found a trampoline, taking it!")
                             return [Target(tr, cave_.at(*tr), path)]
@@ -284,7 +285,7 @@ class AStarSolver(Solver):
             if cave_._lift_pos in self._failed_targets:
                 logging.debug("lift %s failed before, skipping", cave_._lift_pos)
                 return []
-            p = cave_.find_path(cave_._lift_pos)
+            f, p = cave_.find_path(cave_._lift_pos)
             if p:
                 logging.debug("go to open lift")
                 return [Target(cave_._lift_pos, cave_.at(*cave_._lift_pos), p)]
@@ -336,7 +337,7 @@ class AStarSolver(Solver):
                                 cave_ = new_cave
                                 moves = new_moves
                                 logging.debug("find path: %s -> %s", cave_._robot_pos, target.pos)
-                                path = cave_.find_path(target.pos)
+                                f, path = cave_.find_path(target.pos)
                                 logging.debug("found path: %s", path)
                             else:
                                 need_panic = True
@@ -356,7 +357,7 @@ class AStarSolver(Solver):
                                 if (success or replan) and not new_cave.end_state == cave.END_STATE_LOSE:
                                     cave_ = new_cave
                                     moves = new_moves
-                                    path = cave_.find_path(target.pos)
+                                    f, path = cave_.find_path(target.pos)
                                     break
                             else:
                                 # replan on a higher level
