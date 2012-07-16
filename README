@@ -1,4 +1,14 @@
 Team: Sir Bedevere the Wise
 Members: Dan Gerhardsson, Pär Bohrarper
 
-Strategy: for now, just naïve path finding
+Strategy:
+
+1. Find lambdas
+2. Find rocks/dirt that may need to be moved before taking the lambda
+3. Find higher order rocks and convert to lambdas
+4. Go to lift if possible
+
+Each step is done with lots of A* path finding, with replanning when rocks fall.
+If a path can't be reached, additional panic moves are performed.
+Paths can go through beards if razors are carried.
+If drowning is imminent, abort.
