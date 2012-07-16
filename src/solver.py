@@ -58,6 +58,7 @@ class AStarSolver(Solver):
         Solver.__init__(self)
         self._from_below = from_below
         self._failed_targets = set()
+        self._bad_rocks = None
         self.visited = {}
 
     def find_movable_rocks(self, cave_, pos=None):
@@ -242,7 +243,7 @@ class AStarSolver(Solver):
         logging.debug("find new target(s)")
         # find some lambdas
         lambdas = self.find_lambdas(cave_)
-        lambdas = lambdas[:20]
+        lambdas = lambdas[:10]
 
         # sort on path cost (lower is better)
         path_cost = {}
@@ -267,6 +268,7 @@ class AStarSolver(Solver):
         # throw away the ones we can't exit from
         unblockable = {}
         movable = {}
+        maybe_movable = {}
         blocked = set()
         movable_rocks = self.find_movable_rocks(cave_)
         logging.debug("movable rocks: %s", movable_rocks)
@@ -312,8 +314,12 @@ class AStarSolver(Solver):
                             rock_can_fall_from_straight_above = c.at(rx, ry+1) in cave.CAVE_ANY_ROCK
                             if not (rock_can_fall_from_straight_above or rock_can_fall_from_right_above or rock_can_fall_from_left_above):
                                 needed_pos = self.move_rock(c, rx, ry)
-                                movable[(x,y)] = needed_pos
+                                maybe_movable[(x,y)] = needed_pos
                                 logging.debug("intersecting rock is movable: %s", needed_pos)
+                elif (x, y+1) in self._bad_rocks and c.at(x, y-1) == cave.CAVE_EMPTY:
+                    logging.debug("there is a bad rock at %s, figure out how to move it!", (x, y+1))
+                    needed_pos = self.move_rock(c, x, y+1)
+                    movable[(x,y)] = needed_pos
 
         # assemble a list of targets with paths
         target_list = []
@@ -356,6 +362,22 @@ class AStarSolver(Solver):
             target_list = self.assemble_target_list(cave_, curr, positions)
             if target_list:
                 break
+            # try to move
+            if lmb in maybe_movable:
+                possibly_movable = maybe_movable[lmb]
+                for pm in possibly_movable:
+                    # if we can't reach, don't add the lambda
+                    if lmb not in intersecting:
+                        pm.append(lmb)
+                    curr = cave_._robot_pos
+                    logging.debug("possible positions to move rock: %s", pm)
+                    target_list = self.assemble_target_list(cave_, curr, pm)
+                    if target_list:
+                        logging.debug("rock can likely be moved")
+                        break
+                # also break out of outer loop
+                if target_list:
+                    break
 
         if target_list:
             return target_list
@@ -443,6 +465,7 @@ class AStarSolver(Solver):
         moves = ""
         panic_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN, cave.MOVE_SHAVE]
         panic_count = 0
+        self._bad_rocks = cave_.find_bad_rocks()
         try:
             while not cave_.completed:
                 logging.debug("lambdas left: %d", cave_._lambda_count)
@@ -543,7 +566,7 @@ def main(options, args):
 
     solutions.sort(reverse=True)
     if solutions:
-        print solutions[0][2]
+        print solutions[0][2],
     for s in solutions:
         score, new_c, route = s
         logging.info("score: %d", score)

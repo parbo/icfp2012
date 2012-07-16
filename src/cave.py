@@ -326,7 +326,7 @@ class Cave(object):
             if obj in CAVE_ANY_ROCK and self.at(rpx+2*dx, rpy) == CAVE_EMPTY:
                 if self.at(rpx+3*dx, rpy) in (CAVE_OPEN_LIFT, CAVE_CLOSED_LIFT):
                     return 1000 # really high, but not impossible
-                return 3
+                return 5
         # it's possible to go to any occupiable object
         if is_occupiable(obj):
             return 1
@@ -377,6 +377,10 @@ class Cave(object):
                     y += 1
                 if self.at(x, y) in (CAVE_DIRT, CAVE_RAZOR):
                     self._additional_cost[x, y] = 25
+        bad_rocks = self.find_bad_rocks()
+        for x, y in bad_rocks:
+            if self.at(x, y-1) in (CAVE_DIRT, CAVE_RAZOR, CAVE_LAMBDA):
+                self._additional_cost[x, y-1] = 5
 
     def get_possible_robot_moves(self, pos=None):
         if pos is None:
@@ -623,9 +627,12 @@ class Cave(object):
         bad = set()
         lx, ly = self._lift_pos
         for x, y in [(lx - 1, ly), (lx, ly + 1), (lx + 1, ly)]:
-            content = cave[x, y]
-            if content not in other_than_rock:
-                bad.add(content)
+            try:
+                content = cave[x, y]
+                if content not in other_than_rock:
+                    bad.add(content)
+            except KeyError:
+                pass
         return bad
 
 if __name__ == '__main__':
