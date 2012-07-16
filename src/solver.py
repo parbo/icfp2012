@@ -35,6 +35,7 @@ class AStarSolver(Solver):
     def __init__(self, from_below):
         Solver.__init__(self)
         self._from_below = from_below
+        self._failed_targets = set()
         self.visited = {}
 
     def find_lambdas(self, cave_, pos=None):
@@ -167,7 +168,10 @@ class AStarSolver(Solver):
         target_list = []
         for lmb in lambdas:
             if lmb in blocked:
-                logging.debug("lambda %s is blocked", lmb)
+                logging.debug("lambda %s is blocked, skipping", lmb)
+                continue
+            if lmb in self._failed_targets:
+                logging.debug("lambda %s has failed before, skipping", lmb)
                 continue
             positions = []
             try:
@@ -208,6 +212,9 @@ class AStarSolver(Solver):
                     trampolines = cave_.target_trampolines(cave_.at(*t))
                     logging.debug("trampolines: %s", trampolines)
                     for tr in [cave_._trampoline_pos[tramp] for tramp in trampolines]:
+                        if tr in self._failed_targets:
+                            logging.debug("trampoline %s has failed before, skipping", tr)
+                            continue
                         path = cave_.find_path(tr)
                         if path:
                             logging.debug("found a trampoline, taking it!")
@@ -215,6 +222,9 @@ class AStarSolver(Solver):
 
         # no lambdas, find open lift
         if cave_.at(*cave_._lift_pos) == cave.CAVE_OPEN_LIFT:
+            if cave_._lift_pos in self._failed_targets:
+                logging.debug("lift %s failed before, skipping", cave_._lift_pos)
+                return []
             p = cave_.find_path(cave_._lift_pos)
             if p:
                 logging.debug("go to open lift")
@@ -248,6 +258,7 @@ class AStarSolver(Solver):
                     # reset panic count for new targets
                     self.panic_count = 0
                     target_done = False
+                    target_fail = False
                     need_panic = False
                     path = target.path
                     while not target_done:
@@ -289,9 +300,15 @@ class AStarSolver(Solver):
                                     path = cave_.find_path(target.pos)
                                     break
                             else:
-                                # TODO: replan on a higher level
-                                logging.debug("panic didn't work, aborting")
-                                return self.move(cave_, moves, cave.MOVE_ABORT)
+                                # replan on a higher level
+                                logging.debug("panic didn't work, skipping target list")
+                                target_fail = True
+                                target_done = True
+                    # if a target fails, we break out of the target_list loop
+                    if target_fail:
+                        logging.debug("add %s to failed targets", target.pos)
+                        self._failed_targets.add(target.pos)
+                        break
         except SolverInterrupted:
             logging.debug("solver interrupted, abort")
             self.interrupted = True
