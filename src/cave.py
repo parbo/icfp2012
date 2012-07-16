@@ -359,12 +359,24 @@ class Cave(object):
         return cost + self._additional_cost.get((x, y), 0)
     
     def refresh_additional_cost(self):
+        # Extra cost due to potential lift blockage.
         x, y = self._lift_pos
-        y += 1
-        while self.at(x, y) in (CAVE_EMPTY, CAVE_LAMBDA, CAVE_RAZOR, CAVE_ROBOT):
-            y += 1
-        if self.at(x, y) in (CAVE_DIRT, CAVE_RAZOR):
-            self._additional_cost[x, y] = 25
+        # Only add cost if lift can't be reached from below.
+        if self.at(x, y - 1) not in (CAVE_EMPTY, CAVE_DIRT, CAVE_LAMBDA, CAVE_RAZOR, CAVE_ROBOT):
+            solid = (CAVE_WALL, CAVE_ROCK, CAVE_LAMBDA_ROCK)
+            all_solid = lambda squares: all([self.at(x, y) in solid for x, y in squares])
+            start_squares = []
+            if all_solid([(x, y + 1), (x + 1, y), (x - 1, y - 1)]):
+                start_squares.append((x - 1, y))
+            if all_solid([(x, y + 1), (x - 1, y), (x + 1, y - 1)]):
+                start_squares.append((x + 1, y))
+            if all_solid([(x - 1, y), (x + 1, y)]):
+                start_squares.append((x, y + 1))
+            for x, y in start_squares:
+                while self.at(x, y) in (CAVE_EMPTY, CAVE_LAMBDA, CAVE_RAZOR, CAVE_ROBOT):
+                    y += 1
+                if self.at(x, y) in (CAVE_DIRT, CAVE_RAZOR):
+                    self._additional_cost[x, y] = 25
 
     def get_possible_robot_moves(self, pos=None):
         if pos is None:
