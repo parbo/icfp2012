@@ -109,6 +109,16 @@ class AStarSolver(Solver):
                 move = cave.MOVE_WAIT
 
             if move:
+                # do we need to shave?
+                dx, dy = cave.DPOS[move]
+                if cave_.at(rpx+dx, rpy+dy) == cave.CAVE_BEARD:
+                    logging.debug("shave needed at %s", (rpx+dx, rpy+dy))
+                    cave_, moves, step_success, step_replan = self.move(cave_, moves, cave.MOVE_SHAVE)
+                    if step_replan:
+                        replan = True
+                        break
+
+                # execute wanted move
                 cave_, moves, step_success, step_replan = self.move(cave_, moves, move)
                 if step_replan:
                     replan = True
@@ -123,8 +133,22 @@ class AStarSolver(Solver):
         new_cave = cave_.move(move)
         dx, dy = cave.DPOS[move]
         rpx, rpy = cave_._robot_pos
-        success = self.move_success(new_cave, (rpx+dx, rpy+dy))
-        return new_cave, moves + move, success, new_cave.rock_movement
+        move_to = (rpx+dx, rpy+dy)
+        success = False
+        if move == cave.MOVE_SHAVE:
+            shave_ok = False
+            for x, y in cave.surrounding_squares(*move_to):
+                if cave_.at(x, y) == cave.CAVE_BEARD:
+                    shave_ok = True
+                    break
+            if shave_ok:
+                success = True
+        else:
+            success = self.move_success(new_cave, (rpx+dx, rpy+dy))
+        if success:
+            return new_cave, moves + move, success, new_cave.rock_movement
+        else:
+            return cave_, moves, success, cave_.rock_movement
 
     def exit_blocked(self, cave_, pos):
         return len(cave_.get_possible_robot_moves(pos)) == 0
@@ -298,7 +322,7 @@ class AStarSolver(Solver):
 
     def solve(self, cave_):
         moves = ""
-        panic_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN]
+        panic_moves = [cave.MOVE_UP, cave.MOVE_LEFT, cave.MOVE_RIGHT, cave.MOVE_DOWN, cave.MOVE_SHAVE]
         panic_count = 0
         try:
             while not cave_.completed:

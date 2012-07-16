@@ -330,6 +330,10 @@ class Cave(object):
         # it's possible to go to any occupiable object
         if is_occupiable(obj):
             return 1
+        # if we have razors, we can go through beards if needed
+        if obj == CAVE_BEARD:
+            if self.razors_carried > 0:
+                return 3
         # we can move to a position with a robot
         if obj == CAVE_ROBOT:
             return 0
