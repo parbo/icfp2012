@@ -31,6 +31,28 @@ class Solver(object):
     def solve(self, cave):
         """Returns a route"""
 
+def get_lambda_comparer(cave_, rpos, lpos, from_below):
+    rpx, rpy = rpos
+    lpx, lpy = lpos
+    def compare(p1, p2):
+        dx1 = abs(rpx - p1[0])
+        dy1 = abs(rpy - p1[1])
+        dx2 = abs(rpx - p2[0])
+        dy2 = abs(rpy - p2[1])
+        if from_below:
+            diff = p1[1] - p2[1]
+            if diff == 0:
+                diff = dx1 - dx2
+        else:
+            diff = (dx1+dy1) - (dx2+dy2)
+            if diff == 0:
+                diff = dy1 - dy2
+        if diff == 0:
+            # take lambdas close to the lift later
+            return (abs(lpx - p2[0]) + abs(lpy - p2[1])) - (abs(lpx - p1[0]) + abs(lpy - p1[1]))
+        return diff
+    return compare
+
 class AStarSolver(Solver):
     def __init__(self, from_below):
         Solver.__init__(self)
@@ -39,38 +61,29 @@ class AStarSolver(Solver):
         self.visited = {}
 
     def find_lambdas(self, cave_, pos=None):
-        def get_lambda_comparer(cave_, rpos, lpos):
-            rpx, rpy = rpos
-            lpx, lpy = lpos
-            def compare(p1, p2):
-                dx1 = abs(rpx - p1[0])
-                dy1 = abs(rpy - p1[1])
-                dx2 = abs(rpx - p2[0])
-                dy2 = abs(rpy - p2[1])
-                if self._from_below:
-                    diff = p1[1] - p2[1]
-                    if diff == 0:
-                        diff = dx1 - dx2
-                else:
-                    diff = (dx1+dy1) - (dx2+dy2)
-                    if diff == 0:
-                        diff = dy1 - dy2
-                if diff == 0:
-                    # take lambdas close to the lift later
-                    return (abs(lpx - p2[0]) + abs(lpy - p2[1])) - (abs(lpx - p1[0]) + abs(lpy - p1[1]))
-                return diff
-            return compare
         w, h = cave_.size
         lambdas = []
         for x, y in cave_.lambdas:
-            if cave_.at(x, y) == cave.CAVE_LAMBDA:
-                possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL,) and cave_.at(x + 1, y) in (cave.CAVE_WALL,))
-                if possible:
-                    lambdas.append((x, y))
+            possible = not (cave_.at(x, y + 1) == cave.CAVE_ROCK and cave_.at(x - 1, y) in (cave.CAVE_WALL,) and cave_.at(x + 1, y) in (cave.CAVE_WALL,))
+            if possible:
+                lambdas.append((x, y))
         if pos is None:
             pos = cave_._robot_pos
         rpx, rpy = pos
-        lambdas.sort(get_lambda_comparer(cave_, pos, cave_._lift_pos))
+        lambdas.sort(get_lambda_comparer(cave_, pos, cave_._lift_pos, self._from_below))
+        return lambdas
+
+    def find_lambda_rocks(self, cave_, pos=None):
+        w, h = cave_.size
+        lambdas = []
+        for x, y in cave_.lambda_rocks:
+            possible = (cave_.at(x, y - 1) in (cave.CAVE_DIRT, cave.CAVE_RAZOR) and (cave_.at(x-1, y - 1) in (cave.CAVE_DIRT, cave.CAVE_RAZOR, cave.CAVE_EMPTY) or cave_.at(x+1, y - 1) in (cave.CAVE_DIRT, cave.CAVE_RAZOR, cave.CAVE_EMPTY)))
+            if possible:
+                lambdas.append((x, y))
+        if pos is None:
+            pos = cave_._robot_pos
+        rpx, rpy = pos
+        lambdas.sort(get_lambda_comparer(cave_, pos, cave_._lift_pos, self._from_below))
         return lambdas
 
     def move_success(self, cave_, expected):
@@ -153,9 +166,7 @@ class AStarSolver(Solver):
         unblockable = {}
         blocked = set()
         for x, y in lambdas:
-            c = cave_.clone()
-            c.set(x, y, cave.CAVE_EMPTY)
-            c, iters = c.next_stable()
+            c = cave_
             if self.exit_blocked(c, (x, y)):
                 if c.at(x-1, y) == cave.CAVE_ROCK and c.at(x-2, y) in cave.CAVE_REMOVABLE_CHARS:
                     unblockable[(x,y)] = (x-2, y)
@@ -179,6 +190,54 @@ class AStarSolver(Solver):
             except KeyError:
                 pass
             positions.append(lmb)
+            curr = cave_._robot_pos
+            tentative = []
+            for pos in positions:
+                p = cave_.find_path(pos, curr)
+                if p:
+                    tentative.append(Target(pos, cave_.at(*pos), p))
+                    curr = pos
+                else:
+                    logging.debug("no path %s -> %s", curr, pos)
+                    break
+            if len(tentative) == len(positions):
+                target_list = tentative
+                break
+
+        if target_list:
+            return target_list
+
+        # try to get some lambda rocks
+        lambda_rocks = self.find_lambda_rocks(cave_)
+        lambda_rocks = lambda_rocks[:10]
+        lrocktoremove = {}
+        lrockendpos = []
+        blocked = set()
+        for rx, ry in lambda_rocks:
+            for x, y in [(rx-1, ry-1), (rx+1, ry-1)]:
+                c = cave_
+                if not self.exit_blocked(c, (x, y)):
+                    lrocktoremove[(x,y)] = (rx, ry-1)
+                    lrockendpos.append((x, y))
+                    break
+
+        logging.debug("found %d possible lambda rocks", len(lrockendpos))
+
+        # assemble a list of targets with paths
+        target_list = []
+        for lrk in lrockendpos:
+            if lrk in blocked:
+                logging.debug("lambda rock %s is blocked, skipping", lmb)
+                continue
+            if lrk in self._failed_targets:
+                logging.debug("lambda rock %s has failed before, skipping", lmb)
+                continue
+            positions = []
+            try:
+                positions.append(lrocktoremove[lrk])
+            except KeyError:
+                pass
+            positions.append(lrk)
             curr = cave_._robot_pos
             tentative = []
             for pos in positions:
